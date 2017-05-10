@@ -63,15 +63,15 @@ parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, req
 
 
 # specific training scheme setting
-parser.add_argument('--fine_tune', dest='fine_tune', type=str, default=None,
+parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
                     help='specific labels id to be fine tuned')
-parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, default=0,
+parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
-parser.add_argument('--freeze_decoder', dest='freeze_decoder', type=int, default=0,
+parser.add_argument('--freeze_decoder', dest='freeze_decoder', type=int, required=True,
                     help="freeze decoder weights during training")
-parser.add_argument('--freeze_discriminator', dest='freeze_discriminator', type=int, default=0,
+parser.add_argument('--freeze_discriminator', dest='freeze_discriminator', type=int, required=True,
                     help="freeze discriminator weights during training")
-parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=int, default=1,
+parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=int, required=True,
                     help="freeze ebdd weights during training")
 
 
@@ -85,7 +85,7 @@ def main(_):
 
     with tf.Session(config=config) as sess:
         fine_tune_list = None
-        if args.fine_tune:
+        if not args.fine_tune == '-1':
             ids = args.fine_tune.split(",")
             fine_tune_list = set([int(i) for i in ids])
 
@@ -129,7 +129,12 @@ input_args = ['--experiment_id','0',
               '--resume','0',
               '--resume_dir','./experiment/basic_model_0/',
               '--sample_steps','10',
-              '--checkpoint_steps','15'
+              '--checkpoint_steps','15',
+              '--fine_tune','-1',
+              '--freeze_encoder','0',
+              '--freeze_decoder','0',
+              '--freeze_discriminator','0',
+              '--freeze_ebdd_weights','1'
               ]
 #input_args = []
 args = parser.parse_args(input_args)
