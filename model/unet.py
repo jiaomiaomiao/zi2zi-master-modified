@@ -21,7 +21,7 @@ import matplotlib.image as mpimg
 # Auxiliary wrapper classes
 # Used to save handles(important nodes in computation graph) for later evaluation
 LossHandle = namedtuple("LossHandle", ["d_loss", "g_loss",
-                                       "const_loss", "l1_loss", "tv_loss", "ebdd_weight_loss","ebdd_traget_difference",
+                                       "const_loss", "l1_loss", "tv_loss", "ebdd_weight_loss","label_difference_net","label_difference_loss","label_difference_org",
                                        "category_loss", "real_category_loss", "fake_category_loss",
                                        "cheat_loss",])
 InputHandle = namedtuple("InputHandle", ["real_data", "validate_image","ebdd_weights_static","targeted_label"])
@@ -29,8 +29,8 @@ EvalHandle = namedtuple("EvalHandle", ["encoder","generator", "target", "source"
 SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged","valiadte_image_merged"])
 
 DebugHandle = namedtuple("DebugHandle", ["ebdd_weights_org", "ebdd_weights_1norm",
-                                         "ebdd_weights_batch", "ebdd_weights_batch_1norm",
-                                         "ebdd_weights_batch_normed", "ebdd_weights_batch_normed_1norm"])
+                                         "ebdd_weights_net", "ebdd_weights_net_1norm",
+                                         "ebdd_weights_loss", "ebdd_weights_loss_1norm"])
 
 eps= 1e-3
 
@@ -230,7 +230,7 @@ class UNet(object):
 
         ebdd_weights_static=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="gen_ebdd_weights_static")
         ebdd_weights_dynamic=init_embedding_weights(size=[1,self.font_num_for_train],name="gen_ebdd_weights_dynamic")
-        targeted_label=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="label_target")
+        targeted_label=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="target_label")
 
 
 
@@ -239,18 +239,21 @@ class UNet(object):
             ebdd_weights_1norm=tf.reduce_sum(ebdd_weights_org,axis=1)
             ebdd_weights_batch = ebdd_weights_static # ebdd weights
             ebdd_weights_batch_normed = weight_norm(ebdd_weights_batch)
-            ebdd_weights = ebdd_weights_batch_normed
+            #ebdd_weights_batch_normed = tf.nn.sigmoid(ebdd_weights_batch)
+            ebdd_weights_for_net = ebdd_weights_batch_normed
+            ebdd_weights_for_loss = ebdd_weights_batch_normed
         else:
             # ebdd_weights = tf.matmul(ebdd_weights_dynamic,tf.ones([1,self.batch_size],dtype=tf.float32))
             ebdd_weights_org = ebdd_weights_dynamic
             ebdd_weights_1norm = tf.reduce_sum(ebdd_weights_org,axis=1)
             ebdd_weights_batch = tf.matmul(tf.ones([self.batch_size,1],dtype=tf.float32),ebdd_weights_dynamic)
-            ebdd_weights_batch_normed = weight_norm(ebdd_weights_batch)
-            ebdd_weights = ebdd_weights_batch_normed
+            #ebdd_weights_batch_normed = weight_norm(ebdd_weights_batch)
+            ebdd_weights_batch_normed = tf.nn.softmax(ebdd_weights_batch)
+            ebdd_weights_for_net = weight_norm(ebdd_weights_batch)
+            ebdd_weights_for_loss = ebdd_weights_batch_normed
 
-
-        ebdd_weights_batch_1norm = tf.reduce_sum(ebdd_weights_batch,axis=1)
-        ebdd_weights_batch_normed_1norm = tf.reduce_sum(ebdd_weights_batch_normed,axis=1)
+        ebdd_weights_for_net_1norm = tf.reduce_sum(ebdd_weights_for_net,axis=1)
+        ebdd_weights_for_loss_1norm = tf.reduce_sum(ebdd_weights_for_loss,axis=1)
 
 
 
@@ -264,10 +267,10 @@ class UNet(object):
         # ebdd processing
         ebdd_dictionary = init_embedding_dictionary(self.font_num_for_train, self.ebdd_dictionary_dim)
         #ebdd_vector = tf.nn.ebdd_lookup(ebdd_dictionary, ids=ebdd_weights)
-        ebdd_vector = tf.matmul(ebdd_weights,ebdd_dictionary)
+        ebdd_vector = tf.matmul(ebdd_weights_for_net,ebdd_dictionary)
         ebdd_vector = tf.reshape(ebdd_vector, [self.batch_size, 1, 1, self.ebdd_dictionary_dim])
 
-        fake_B, encoded_real_B = self.generator(images=real_A, ebdd_vector=ebdd_vector, ebdd_weights=ebdd_weights, is_training=is_training,
+        fake_B, encoded_real_B = self.generator(images=real_A, ebdd_vector=ebdd_vector, ebdd_weights=ebdd_weights_for_net, is_training=is_training,
                                                 inst_norm=inst_norm)
         real_AB = tf.concat([real_A, real_B], 3)
         fake_AB = tf.concat([real_A, fake_B], 3)
@@ -293,7 +296,7 @@ class UNet(object):
 
 
         # category loss
-        true_labels = tf.reshape(ebdd_weights,
+        true_labels = tf.reshape(ebdd_weights_for_loss,
                                  shape=[self.batch_size, self.font_num_for_train])
         real_category_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_category_logits,
                                                                                     labels=true_labels))
@@ -316,8 +319,14 @@ class UNet(object):
 
 
         # embedding weight loss && difference checker
-        ebdd_weight_loss = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_org,axis=1),tf.ones([self.batch_size],dtype=tf.float32)))) * self.ebdd_weight_penalty
-        label_difference_total = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights)))
+        ebdd_weight_loss = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_batch,axis=1),tf.ones([self.batch_size],dtype=tf.float32)))) * self.ebdd_weight_penalty
+        label_difference_org = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_batch)))
+        label_difference_net = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_net)))
+        label_difference_loss = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_loss)))
+
+
+
+
 
 
 
@@ -336,6 +345,12 @@ class UNet(object):
 
         # for embeddings
         ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_weight_loss)
+        ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org",label_difference_org)
+        ebdd_label_diff_net_summary = tf.summary.scalar("ebdd_label_diff_net",label_difference_net)
+        ebdd_label_diff_loss_summary = tf.summary.scalar("ebdd_label_diff_loss",label_difference_loss)
+
+
+
 
         # original generator loss
         cheat_loss_summary = tf.summary.scalar("cheat_loss", cheat_loss)
@@ -376,10 +391,34 @@ class UNet(object):
                                              category_loss_summary, real_category_loss_summary, fake_category_loss_summary,
                                              d_loss_summary])
 
-        g_merged_summary = tf.summary.merge([l1_loss_summary,const_loss_summary,ebdd_weight_loss_summary,tv_loss_summary,
-                                             cheat_loss_summary,
-                                             fake_category_loss_summary,
-                                             g_loss_summary])
+        fine_tune_list = list()
+        for ii in self.fine_tune:
+            fine_tune_list.append(ii)
+
+
+        if fine_tune_list[0]==-1:
+            g_merged_summary = tf.summary.merge([l1_loss_summary,const_loss_summary,
+                                                ebdd_weight_loss_summary,ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                tv_loss_summary,
+                                                cheat_loss_summary,
+                                                fake_category_loss_summary,
+                                                g_loss_summary])
+        else:
+            weight_checker_for_org = ebdd_weights_batch[0,fine_tune_list[0]]
+            weight_checker_for_net = ebdd_weights_for_net[0, fine_tune_list[0]]
+            weight_checker_for_loss = ebdd_weights_for_loss[0, fine_tune_list[0]]
+            ebdd_weight_checker_for_org_summary = tf.summary.scalar("ebdd_weight_checker_for_org",weight_checker_for_org)
+            ebdd_weight_checker_for_net_summary = tf.summary.scalar("ebdd_weight_checker_for_net",weight_checker_for_net)
+            ebdd_weight_checker_for_loss_summary = tf.summary.scalar("ebdd_weight_checker_for_loss",weight_checker_for_loss)
+            g_merged_summary = tf.summary.merge([l1_loss_summary, const_loss_summary,
+                                                ebdd_weight_loss_summary,
+                                                ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                ebdd_weight_checker_for_org_summary,ebdd_weight_checker_for_net_summary,ebdd_weight_checker_for_loss_summary,
+                                                tv_loss_summary,
+                                                cheat_loss_summary,
+                                                fake_category_loss_summary,
+                                                g_loss_summary])
+
 
         #validate_image_merged_summary = tf.summary.merge([validate_image_summary])
 
@@ -397,7 +436,9 @@ class UNet(object):
                                  l1_loss=l1_loss,
                                  tv_loss=tv_loss,
                                  ebdd_weight_loss=ebdd_weight_loss,
-                                 ebdd_traget_difference=label_difference_total,
+                                 label_difference_org=label_difference_org,
+                                 label_difference_net=label_difference_net,
+                                 label_difference_loss=label_difference_loss,
                                  category_loss=category_loss,
                                  real_category_loss=real_category_loss,
                                  fake_category_loss=fake_category_loss,
@@ -414,8 +455,8 @@ class UNet(object):
                                        valiadte_image_merged=validate_image_summary)
 
         debug_handle = DebugHandle(ebdd_weights_org=ebdd_weights_org, ebdd_weights_1norm=ebdd_weights_1norm,
-                                   ebdd_weights_batch=ebdd_weights_batch, ebdd_weights_batch_1norm=ebdd_weights_batch_1norm,
-                                   ebdd_weights_batch_normed=ebdd_weights_batch_normed, ebdd_weights_batch_normed_1norm=ebdd_weights_batch_normed_1norm)
+                                   ebdd_weights_net=ebdd_weights_for_net, ebdd_weights_net_1norm=ebdd_weights_for_net_1norm,
+                                   ebdd_weights_loss=ebdd_weights_for_loss, ebdd_weights_loss_1norm=ebdd_weights_for_loss_1norm)
 
         # those operations will be shared, so we need
         # to make them visible globally
@@ -738,7 +779,7 @@ class UNet(object):
                 labels, batch_images = batch
                 labels = self.denst_to_one_hot(labels,self.font_num_for_train)
 
-
+                #tmp_ebdd_feed=np.random.uniform(0,1,size=[labels.shape[0],labels.shape[1]])
 
                 if self.freeze_ebdd_weights==True:
                     # Optimize D
@@ -762,7 +803,7 @@ class UNet(object):
                     # collect all the losses along the way
                     _, batch_g_loss, category_loss, real_category_loss, fake_category_loss,\
                     cheat_loss, \
-                    const_loss, l1_loss, tv_loss, ebdd_weight_loss, difference, \
+                    const_loss, l1_loss, tv_loss, ebdd_weight_loss, diff_org,diff_normed, \
                     g_summary = self.sess.run([g_optimizer,
                                             loss_handle.g_loss,
                                             loss_handle.category_loss,
@@ -773,7 +814,8 @@ class UNet(object):
                                             loss_handle.l1_loss,
                                             loss_handle.tv_loss,
                                             loss_handle.ebdd_weight_loss,
-                                            loss_handle.ebdd_traget_difference,
+                                            loss_handle.label_diff_org,
+                                            loss_handle.label_diff_normed,
                                             summary_handle.g_merged],
                                             feed_dict={real_data: batch_images,
                                                        ebdd_weights_static: labels,
@@ -785,12 +827,12 @@ class UNet(object):
 
 
 
-                    #print(debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels}))
-                    #print(debug_handle.ebdd_weights_1norm.eval(feed_dict={ebdd_weights_static: labels}))
-                    #print(debug_handle.ebdd_weights_batch.eval(feed_dict={ebdd_weights_static: labels}))
-                    #print(debug_handle.ebdd_weights_batch_1norm.eval(feed_dict={ebdd_weights_static: labels}))
-                    #print(debug_handle.ebdd_weights_batch_normed.eval(feed_dict={ebdd_weights_static: labels}))
-                    #print(debug_handle.ebdd_weights_batch_normed_1norm.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_1norm.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_batch.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_batch_1norm.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_batch_normed.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_batch_normed_1norm.eval(feed_dict={ebdd_weights_static: labels}))
 
                 else:
                     # Optimize D
@@ -813,7 +855,7 @@ class UNet(object):
                     # collect all the losses along the way
                     _, batch_g_loss, category_loss, real_category_loss, fake_category_loss,\
                     cheat_loss, \
-                    const_loss, l1_loss, tv_loss, ebdd_weight_loss,difference, \
+                    const_loss, l1_loss, tv_loss, ebdd_weight_loss, diff_org,diff_net,diff_loss, \
                     g_summary = self.sess.run([g_optimizer,
                                             loss_handle.g_loss,
                                             loss_handle.category_loss,
@@ -824,7 +866,9 @@ class UNet(object):
                                             loss_handle.l1_loss,
                                             loss_handle.tv_loss,
                                             loss_handle.ebdd_weight_loss,
-                                            loss_handle.ebdd_traget_difference,
+                                            loss_handle.label_difference_org,
+                                            loss_handle.label_difference_net,
+                                            loss_handle.label_difference_loss,
                                             summary_handle.g_merged],
                                             feed_dict={real_data: batch_images,
                                                        learning_rate: current_lr,
@@ -834,13 +878,10 @@ class UNet(object):
 
 
 
-                    # print (debug_handle.ebdd_weights_org.eval())
-                    # print (debug_handle.ebdd_weights_1norm.eval())
-                    # print (debug_handle.ebdd_weights_batch.eval())
-                    # print (debug_handle.ebdd_weights_batch_1norm.eval())
-                    # print (debug_handle.ebdd_weights_batch_normed.eval())
-                    # print (debug_handle.ebdd_weights_batch_normed_1norm.eval())
-
+                    print (debug_handle.ebdd_weights_org.eval()[0,:])
+                    print(debug_handle.ebdd_weights_net.eval()[0, :])
+                    print(debug_handle.ebdd_weights_loss.eval()[0, :])
+                    print(labels[0, :])
 
                 passed_full = time.time() - start_time
                 passed_itr = time.time() - this_itr_start
@@ -858,12 +899,12 @@ class UNet(object):
                 log_format = "Time:%s,Epoch:[%2d],[%4d/%4d]:from_start:%4.2fhrs;\n" +\
                              "dis:%.2f, category:%.2f, category_real:%.2f, category_fake:%.2f;\n" +\
                              "gen:%.2f,l1:%.2f,const:%.2f,cheat:%.2f,g_fake_category:%.2f;\n" + \
-                             "ebdd:ebdd_weight_loss:%.2f,ebdd_diff:%.2f;\n" \
+                             "ebdd:ebdd_weight_loss:%.2f,ebdd_diff_org:%.5f,ebdd_diff_net:%.5f,ebdd_diff_loss:%.5f;\n" \
                              "pass_category:"+ pass_category + "; pass_generator:"+pass_g+"\n"+ self.print_separater+";"
                 print(log_format % (current_time,ei, bid, total_batches, passed_full/3600,
                                     batch_d_loss, category_loss, real_category_loss, fake_category_loss,
                                     batch_g_loss,l1_loss,const_loss,cheat_loss,fake_category_loss,
-                                    ebdd_weight_loss,difference))
+                                    ebdd_weight_loss,diff_org,diff_net,diff_loss))
 
                 summary_writer.add_summary(d_summary, self.counter)
                 summary_writer.add_summary(g_summary, self.counter)
@@ -890,6 +931,7 @@ class UNet(object):
 
                 self.counter += 1
             # save the last checkpoint of current epoch
+            print(self.print_separater)
             print("Checkpoint saved: last checkpoint step %d of epoch:%d" % (self.counter, ei))
             print(self.print_separater) 
             self.checkpoint(saver, self.counter)

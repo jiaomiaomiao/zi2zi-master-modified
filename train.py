@@ -32,7 +32,7 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, default=20,
+parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, default=5,
                     help="number for distinct fonts for train")
 parser.add_argument('--font_num_for_fine_tune', dest='font_num_for_fine_tune', type=int, default=1,
                     help="number for distinct fonts for fine_tune")
@@ -122,19 +122,19 @@ def main(_):
 
         model.train()
 
-input_args = ['--experiment_id','0',
+input_args = ['--experiment_id','1',
               '--train_name','train_debug.obj',
               '--val_name','train_debug.obj',
               '--batch_size', '2',
-              '--resume','0',
+              '--resume','1',
               '--resume_dir','./experiment/basic_model_0/',
               '--sample_steps','10',
-              '--checkpoint_steps','15',
-              '--fine_tune','-1',
-              '--freeze_encoder','0',
+              '--checkpoint_steps','10',
+              '--fine_tune','0',
+              '--freeze_encoder','1',
               '--freeze_decoder','0',
               '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','1'
+              '--freeze_ebdd_weights','0'
               ]
 #input_args = []
 args = parser.parse_args(input_args)
