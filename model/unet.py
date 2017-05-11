@@ -890,7 +890,8 @@ class UNet(object):
 
                 self.counter += 1
             # save the last checkpoint of current epoch
-            print("Checkpoint: last checkpoint step %d of epoch:%d" % self.counter, ei)
+            print("Checkpoint saved: last checkpoint step %d of epoch:%d" % (self.counter, ei))
+            print(self.print_separater) 
             self.checkpoint(saver, self.counter)
 
     def denst_to_one_hot(self,input_label,label_length):
