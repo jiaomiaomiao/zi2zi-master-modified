@@ -11,8 +11,15 @@ from model.unet import UNet
 
 parser = argparse.ArgumentParser(description='Train')
 
+# mode setting
+# 0 --> full train
+# 1`--> fine_tune_trained
+# 2 --> fine_tune_untrained
+parser.add_argument('--running_mode', dest='running_mode',type=int,required=True)
+
 # directories setting
-parser.add_argument('--experiment_dir', dest='experiment_dir', default='experiment/',
+
+parser.add_argument('--experiment_dir', dest='experiment_dir', default='./experiment/',
                     help='experiment directory, data, samples,checkpoints,etc')
 parser.add_argument('--experiment_id', dest='experiment_id', type=int,
                     help='sequence id for the experiments you prepare to run',required=True)
@@ -32,7 +39,7 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, default=5,
+parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, default=20,
                     help="number for distinct fonts for train")
 parser.add_argument('--font_num_for_fine_tune', dest='font_num_for_fine_tune', type=int, default=1,
                     help="number for distinct fonts for fine_tune")
@@ -44,8 +51,8 @@ parser.add_argument('--epoch', dest='epoch', type=int, default=30, help='number 
 parser.add_argument('--batch_size', dest='batch_size', type=int, help='number of examples in batch',required=True)
 parser.add_argument('--lr', dest='lr', type=float, default=0.001, help='initial learning rate for adam')
 parser.add_argument('--schedule', dest='schedule', type=int, default=10, help='number of epochs to half learning rate')
-parser.add_argument('--resume', dest='resume', type=int, help='resume from previous training',required=True)
-parser.add_argument('--resume_dir',dest='resume_dir',type=str,required=True,
+parser.add_argument('--resume_training', dest='resume_training', type=int, help='resume from previous training',required=True)
+parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',type=str,required=True,
                     help='resume data from what dir')
 parser.add_argument('--inst_norm', dest='inst_norm', type=int, default=0,
                     help='use conditional instance normalization in your model')
@@ -65,6 +72,9 @@ parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, req
 # specific training scheme setting
 parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
                     help='specific labels id to be fine tuned')
+parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
+
+
 parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
 parser.add_argument('--freeze_decoder', dest='freeze_decoder', type=int, required=True,
@@ -91,7 +101,9 @@ def main(_):
 
 
 
-        model = UNet(args.experiment_dir,experiment_id=args.experiment_id,
+        model = UNet(running_mode=args.running_mode,
+                     base_trained_model_dir=args.base_trained_model_dir,
+                     experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
                      train_obj_name=args.train_name, val_obj_name=args.val_name,
                      sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,
 
@@ -109,10 +121,12 @@ def main(_):
                      font_num_for_train=args.font_num_for_train,font_num_for_fine_tune=args.font_num_for_fine_tune,
 
 
-                     resume=args.resume,
-                     resume_dir=args.resume_dir,
+                     resume_training=args.resume_training,
+
 
                      fine_tune=fine_tune_list,
+                     sub_train_set_num=args.sub_train_set_num,
+
                      freeze_encoder=args.freeze_encoder,
                      freeze_decoder=args.freeze_decoder,
                      freeze_discriminator=args.freeze_discriminator,
@@ -120,21 +134,30 @@ def main(_):
         model.register_session(sess)
         model.build_model()
 
-        model.train()
+        model.train_procedures()
 
-input_args = ['--experiment_id','1',
+input_args = ['--running_mode','0',
+              '--base_trained_model_dir', './experiment/base_model_0/',
+              '--experiment_id','0',
+
               '--train_name','train_debug.obj',
               '--val_name','train_debug.obj',
+
               '--batch_size', '2',
-              '--resume','1',
-              '--resume_dir','./experiment/basic_model_0/',
-              '--sample_steps','10',
-              '--checkpoint_steps','10',
-              '--fine_tune','0',
-              '--freeze_encoder','1',
+
+              '--resume_training','0',
+
+              '--sample_steps','5',
+              '--checkpoint_steps','5',
+              '--epoch','10',
+
+              '--fine_tune','2',
+              '--sub_train_set_num','-1',
+
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','0'
+              '--freeze_ebdd_weights','1'
               ]
 #input_args = []
 args = parser.parse_args(input_args)

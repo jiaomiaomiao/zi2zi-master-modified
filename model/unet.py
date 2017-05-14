@@ -37,6 +37,9 @@ eps= 1e-3
 
 class UNet(object):
     def __init__(self,
+                 running_mode=-1,
+                 base_trained_model_dir='./experiment/checkpoint',
+
                  experiment_dir=None, experiment_id=0,
                  train_obj_name='train_debug.obj', val_obj_name='val_debug.obj',
                  sample_steps=500, checkpoint_steps=500,
@@ -50,14 +53,20 @@ class UNet(object):
 
                  font_num_for_train=20, font_num_for_fine_tune=1,
 
-                 resume=True, resume_dir='./experiment/checkpoint',
+                 resume_training=True,
+
+
 
                  fine_tune=None,
+                 sub_train_set_num=-1,
+
                  freeze_encoder=False,
                  freeze_decoder=False,
                  freeze_discriminator=False,
                  freeze_ebdd_weights=True
                  ):
+        self.running_mode = running_mode
+        self.base_trained_model_dir = base_trained_model_dir
         self.experiment_dir = experiment_dir
         self.experiment_id = experiment_id
         self.data_dir = os.path.join(self.experiment_dir, "font_binary_data")
@@ -73,6 +82,10 @@ class UNet(object):
         if not os.path.exists(self.sample_dir):
             os.makedirs(self.sample_dir)
             print("new sample directory created")
+
+
+
+
 
         self.train_obj_name=train_obj_name
         self.val_obj_name = val_obj_name
@@ -106,11 +119,13 @@ class UNet(object):
         self.font_num_for_train = font_num_for_train
         self.font_num_for_fine_tune = font_num_for_fine_tune
 
-        self.resume = resume
-        self.resume_dir = resume_dir
+        self.resume_training = resume_training
+
 
 
         self.fine_tune=fine_tune
+        self.sub_train_set_num=sub_train_set_num
+
         self.freeze_encoder=freeze_encoder
         self.freeze_decoder = freeze_decoder
         self.freeze_discriminator = freeze_discriminator
@@ -123,7 +138,17 @@ class UNet(object):
         self.counter=0
         self.print_separater="################################################################"
 
-
+        id, self.checkpoint_dir, self.log_dir, self.sample_dir = self.get_model_id_and_dir()
+        if self.resume_training == 0 and os.path.exists(self.log_dir):
+            shutil.rmtree(self.checkpoint_dir)
+            shutil.rmtree(self.log_dir)
+            shutil.rmtree(self.sample_dir)
+            print("new model ckpt / log / sample directories removed for %s" % id )
+        if not os.path.exists(self.log_dir):
+            os.makedirs(self.checkpoint_dir)
+            os.makedirs(self.log_dir)
+            os.makedirs(self.sample_dir)
+            print("new model ckpt / log / sample directories created for %s" % id)
 
     def encoder(self, images, is_training, reuse=False):
         with tf.variable_scope("generator"):
@@ -230,8 +255,10 @@ class UNet(object):
 
         ebdd_weights_static=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="gen_ebdd_weights_static")
         ebdd_weights_dynamic=init_embedding_weights(size=[1,self.font_num_for_train],name="gen_ebdd_weights_dynamic")
-        targeted_label=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="target_label")
-
+        if self.running_mode==0 or self.running_mode==1:
+            targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="target_label")
+        else:
+            targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_fine_tune),name="target_label")
 
 
         if self.freeze_ebdd_weights==True:
@@ -348,6 +375,10 @@ class UNet(object):
         ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org",label_difference_org)
         ebdd_label_diff_net_summary = tf.summary.scalar("ebdd_label_diff_net",label_difference_net)
         ebdd_label_diff_loss_summary = tf.summary.scalar("ebdd_label_diff_loss",label_difference_loss)
+        ebdd_weights_hist_org_summary = tf.summary.histogram("ebdd_weight_org_hist",ebdd_weights_batch)
+        ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist",ebdd_weights_for_net)
+        ebdd_weights_hist_loss_summary= tf.summary.histogram("ebdd_weight_loss_hist",ebdd_weights_for_loss)
+
 
 
 
@@ -391,19 +422,23 @@ class UNet(object):
                                              category_loss_summary, real_category_loss_summary, fake_category_loss_summary,
                                              d_loss_summary])
 
-        fine_tune_list = list()
-        for ii in self.fine_tune:
-            fine_tune_list.append(ii)
 
 
-        if fine_tune_list[0]==-1:
+
+        if self.running_mode==0 or self.running_mode==2:
             g_merged_summary = tf.summary.merge([l1_loss_summary,const_loss_summary,
-                                                ebdd_weight_loss_summary,ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                ebdd_weight_loss_summary,
+                                                ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                ebdd_weights_hist_org_summary, ebdd_weights_hist_net_summary,ebdd_weights_hist_loss_summary,
                                                 tv_loss_summary,
                                                 cheat_loss_summary,
                                                 fake_category_loss_summary,
                                                 g_loss_summary])
-        else:
+        elif self.running_mode==1:
+            fine_tune_list = list()
+            for ii in self.fine_tune:
+                fine_tune_list.append(ii)
+
             weight_checker_for_org = ebdd_weights_batch[0,fine_tune_list[0]]
             weight_checker_for_net = ebdd_weights_for_net[0, fine_tune_list[0]]
             weight_checker_for_loss = ebdd_weights_for_loss[0, fine_tune_list[0]]
@@ -413,6 +448,7 @@ class UNet(object):
             g_merged_summary = tf.summary.merge([l1_loss_summary, const_loss_summary,
                                                 ebdd_weight_loss_summary,
                                                 ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                ebdd_weights_hist_org_summary,ebdd_weights_hist_net_summary,ebdd_weights_hist_loss_summary,
                                                 ebdd_weight_checker_for_org_summary,ebdd_weight_checker_for_net_summary,ebdd_weight_checker_for_loss_summary,
                                                 tv_loss_summary,
                                                 cheat_loss_summary,
@@ -429,6 +465,7 @@ class UNet(object):
                                    validate_image=validate_image,
                                    ebdd_weights_static=ebdd_weights_static,
                                    targeted_label=targeted_label)
+
 
         loss_handle = LossHandle(d_loss=d_loss,
                                  g_loss=g_loss,
@@ -531,20 +568,22 @@ class UNet(object):
         return input_handle, loss_handle, eval_handle, summary_handle,debug_handle
 
     def get_model_id_and_dir(self):
-        model_id = "experiment_%d_batch_%d" % (self.experiment_id, self.batch_size)
-        model_dir = os.path.join(self.checkpoint_dir, model_id)
-        return model_id, model_dir
+        model_id = "experiment_%d_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.running_mode)
+        model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
+        model_log_dir = os.path.join(self.log_dir, model_id)
+        model_sample_dir = os.path.join(self.sample_dir, model_id)
+        return model_id,model_ckpt_dir,model_log_dir,model_sample_dir
 
-    def checkpoint(self, saver, step):
+    def checkpoint(self, saver):
         model_name = "unet.model"
-        model_id, model_dir = self.get_model_id_and_dir()
+        # model_id, model_dir = self.get_model_id_and_dir()
+        #
+        # if self.resume==0 and self.counter==0 and os.path.exists(model_dir):
+        #     shutil.rmtree(model_dir)
+        # if not os.path.exists(model_dir):
+        #     os.makedirs(model_dir)
 
-        if self.resume==0 and self.counter==0 and os.path.exists(model_dir):
-            shutil.rmtree(model_dir)
-        if not os.path.exists(model_dir):
-            os.makedirs(model_dir)
-
-        saver.save(self.sess, os.path.join(model_dir, model_name), global_step=step)
+        saver.save(self.sess, os.path.join(self.checkpoint_dir, model_name), global_step=self.counter)
 
     def restore_model(self, saver, model_dir):
 
@@ -572,10 +611,10 @@ class UNet(object):
 
         return fake_images, real_images, d_loss, g_loss, l1_loss
 
-    def validate_model(self,val_iter, epoch, step):
+    def validate_model(self,val_iter, epoch):
         #input_handle, _, _, summary_handle,_ = self.retrieve_handles()
         labels, images = next(val_iter)
-        labels = self.denst_to_one_hot(labels, self.font_num_for_train)
+        labels = self.dense_to_one_hot(labels, self.font_num_for_train)
         fake_imgs, real_imgs, d_loss, g_loss, l1_loss = self.generate_fake_samples(images, labels)
 
         current_time=time.strftime('%Y-%m-%d @ %H:%M:%S',time.localtime())
@@ -588,16 +627,16 @@ class UNet(object):
 
 
 
+        #
+        # model_id, _ = self.get_model_id_and_dir()
+        #
+        # model_sample_dir = os.path.join(self.sample_dir, model_id)
+        # if self.resume==0 and self.counter==0 and  os.path.exists(model_sample_dir):
+        #     shutil.rmtree(model_sample_dir)
+        # if not os.path.exists(model_sample_dir):
+        #     os.makedirs(model_sample_dir)
 
-        model_id, _ = self.get_model_id_and_dir()
-
-        model_sample_dir = os.path.join(self.sample_dir, model_id)
-        if self.resume==0 and self.counter==0 and  os.path.exists(model_sample_dir):
-            shutil.rmtree(model_sample_dir)
-        if not os.path.exists(model_sample_dir):
-            os.makedirs(model_sample_dir)
-
-        sample_img_path = os.path.join(model_sample_dir, "sample_%02d_%04d.png" % (epoch, step))
+        sample_img_path = os.path.join(self.sample_dir, "sample_%02d_%04d.png" % (epoch, self.counter))
         misc.imsave(sample_img_path, merged_pair)
 
 
@@ -720,7 +759,8 @@ class UNet(object):
             op = tf.assign(var, val, validate_shape=False)
             self.sess.run(op)
 
-    def train(self):
+
+    def train_procedures(self):
         g_vars, d_vars, all_vars = self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
                                                       freeze_decoder=self.freeze_decoder,
                                                       freeze_discriminator=self.freeze_discriminator,
@@ -739,23 +779,31 @@ class UNet(object):
         targeted_label = input_handle.targeted_label
 
         # filter by one type of labels
-        data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,filter_by=self.fine_tune)
+        if self.running_mode==0:
+            full_train_mark=True
+        else:
+            full_train_mark=False
+        data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
+                                          filter_by=self.fine_tune,full_train_mark=full_train_mark,sub_train_set_num=self.sub_train_set_num)
         total_batches = data_provider.compute_total_batch_num(self.batch_size)
         val_batch_iter = data_provider.get_val_iter(self.batch_size)
 
         saver = tf.train.Saver(max_to_keep=1,var_list=all_vars)
 
-        model_id, _ = self.get_model_id_and_dir()
-        model_log_dir = os.path.join(self.log_dir, model_id)
 
-        if self.resume==0 and self.counter==0 and os.path.exists(model_log_dir):
-            shutil.rmtree(model_log_dir)
-        if not os.path.exists(model_log_dir):
-            os.makedirs(model_log_dir)
-        summary_writer = tf.summary.FileWriter(model_log_dir, self.sess.graph)
 
-        if self.resume:
-            self.restore_model(saver, self.resume_dir)
+
+        # restore model from previous fully trained one
+        if self.running_mode==1 or self.running_mode == 2:
+            self.restore_model(saver, self.base_trained_model_dir)
+
+
+        # restore model from previous trained one (identical mrunning mode)
+        if self.resume_training==1:
+            self.restore_model(saver, self.checkpoint_dir)
+
+
+        summary_writer = tf.summary.FileWriter(self.log_dir, self.sess.graph)
 
         current_lr = self.lr
 
@@ -775,9 +823,11 @@ class UNet(object):
                 current_lr = update_lr
 
             for bid, batch in enumerate(train_batch_iter):
+                self.counter += 1
+
                 this_itr_start=time.time()
                 labels, batch_images = batch
-                labels = self.denst_to_one_hot(labels,self.font_num_for_train)
+                labels = self.dense_to_one_hot(labels,self.font_num_for_train)
 
                 #tmp_ebdd_feed=np.random.uniform(0,1,size=[labels.shape[0],labels.shape[1]])
 
@@ -803,7 +853,7 @@ class UNet(object):
                     # collect all the losses along the way
                     _, batch_g_loss, category_loss, real_category_loss, fake_category_loss,\
                     cheat_loss, \
-                    const_loss, l1_loss, tv_loss, ebdd_weight_loss, diff_org,diff_normed, \
+                    const_loss, l1_loss, tv_loss, ebdd_weight_loss, diff_org,diff_net,diff_loss, \
                     g_summary = self.sess.run([g_optimizer,
                                             loss_handle.g_loss,
                                             loss_handle.category_loss,
@@ -814,18 +864,15 @@ class UNet(object):
                                             loss_handle.l1_loss,
                                             loss_handle.tv_loss,
                                             loss_handle.ebdd_weight_loss,
-                                            loss_handle.label_diff_org,
-                                            loss_handle.label_diff_normed,
+                                            loss_handle.label_difference_org,
+                                            loss_handle.label_difference_net,
+                                            loss_handle.label_difference_loss,
                                             summary_handle.g_merged],
                                             feed_dict={real_data: batch_images,
                                                        ebdd_weights_static: labels,
                                                        learning_rate: current_lr,
                                                        targeted_label:labels
                                                        })
-
-
-
-
 
                     # print(debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels}))
                     # print(debug_handle.ebdd_weights_1norm.eval(feed_dict={ebdd_weights_static: labels}))
@@ -878,10 +925,10 @@ class UNet(object):
 
 
 
-                    print (debug_handle.ebdd_weights_org.eval()[0,:])
-                    print(debug_handle.ebdd_weights_net.eval()[0, :])
-                    print(debug_handle.ebdd_weights_loss.eval()[0, :])
-                    print(labels[0, :])
+                    # print(debug_handle.ebdd_weights_org.eval()[0,:])
+                    # print(debug_handle.ebdd_weights_net.eval()[0, :])
+                    # print(debug_handle.ebdd_weights_loss.eval()[0, :])
+                    # print(labels[0, :])
 
                 passed_full = time.time() - start_time
                 passed_itr = time.time() - this_itr_start
@@ -896,12 +943,13 @@ class UNet(object):
                 else:
                     pass_g="unpassed"
 
-                log_format = "Time:%s,Epoch:[%2d],[%4d/%4d]:from_start:%4.2fhrs;\n" +\
+                log_format = "Time:%s,Epoch/Itr:[%d/%d]/[%d/%d]:from_start:%4.2fhrs;\n" +\
                              "dis:%.2f, category:%.2f, category_real:%.2f, category_fake:%.2f;\n" +\
                              "gen:%.2f,l1:%.2f,const:%.2f,cheat:%.2f,g_fake_category:%.2f;\n" + \
-                             "ebdd:ebdd_weight_loss:%.2f,ebdd_diff_org:%.5f,ebdd_diff_net:%.5f,ebdd_diff_loss:%.5f;\n" \
+                             "ebdd:ebdd_weight_loss:%.2f \n" + \
+                             "ebdd_diff_org:%.5f,ebdd_diff_net:%.5f,ebdd_diff_loss:%.5f;\n" +\
                              "pass_category:"+ pass_category + "; pass_generator:"+pass_g+"\n"+ self.print_separater+";"
-                print(log_format % (current_time,ei, bid, total_batches, passed_full/3600,
+                print(log_format % (current_time,ei,self.epoch, bid, total_batches, passed_full/3600,
                                     batch_d_loss, category_loss, real_category_loss, fake_category_loss,
                                     batch_g_loss,l1_loss,const_loss,cheat_loss,fake_category_loss,
                                     ebdd_weight_loss,diff_org,diff_net,diff_loss))
@@ -916,7 +964,7 @@ class UNet(object):
 
                 if self.counter % self.sample_steps == 0:
                     # sample the current model states with val data
-                    merged_pair = self.validate_model(val_batch_iter, ei, self.counter)
+                    merged_pair = self.validate_model(val_batch_iter, ei)
                     summary_image = self.sess.run(summary_handle.valiadte_image_merged,feed_dict={
                                                                                     input_handle.validate_image: np.reshape(merged_pair,
                                                                                     (1, merged_pair.shape[0], merged_pair.shape[1], merged_pair.shape[2]))})
@@ -927,16 +975,21 @@ class UNet(object):
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     print("Time:%s, Checkpoint: save checkpoint step %d" % (current_time,self.counter))
                     print(self.print_separater)
-                    self.checkpoint(saver, self.counter)
+                    self.checkpoint(saver)
 
-                self.counter += 1
+
             # save the last checkpoint of current epoch
             print(self.print_separater)
             print("Checkpoint saved: last checkpoint step %d of epoch:%d" % (self.counter, ei))
-            print(self.print_separater) 
-            self.checkpoint(saver, self.counter)
+            print(self.print_separater)
+            self.checkpoint(saver)
 
-    def denst_to_one_hot(self,input_label,label_length):
+
+
+
+    def dense_to_one_hot(self,input_label,label_length):
         output_one_hot_label=np.zeros((len(input_label),label_length),dtype=np.float32)
         output_one_hot_label[np.arange(len(input_label)),input_label]=1
         return output_one_hot_label
+
+
