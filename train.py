@@ -136,28 +136,28 @@ def main(_):
 
         model.train_procedures()
 
-input_args = ['--running_mode','0',
+input_args = ['--running_mode','2',
               '--base_trained_model_dir', './experiment/base_model_0/',
               '--experiment_id','0',
 
-              '--train_name','train_debug.obj',
-              '--val_name','train_debug.obj',
+              '--train_name','train_untrained.obj',
+              '--val_name','train_untrained.obj',
 
-              '--batch_size', '2',
+              '--batch_size', '16',
 
               '--resume_training','0',
 
               '--sample_steps','5',
-              '--checkpoint_steps','5',
-              '--epoch','10',
+              '--checkpoint_steps','20',
+              '--epoch','5',
 
-              '--fine_tune','2',
+              '--fine_tune','0',
               '--sub_train_set_num','-1',
 
-              '--freeze_encoder','0',
+              '--freeze_encoder','1',
               '--freeze_decoder','0',
               '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','1'
+              '--freeze_ebdd_weights','0'
               ]
 #input_args = []
 args = parser.parse_args(input_args)

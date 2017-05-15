@@ -2,6 +2,9 @@
 from __future__ import print_function
 from __future__ import absolute_import
 
+import matplotlib
+matplotlib.use('Agg')
+
 import tensorflow as tf
 import numpy as np
 import scipy.misc as misc
@@ -13,9 +16,9 @@ from .ops import conv2d, deconv2d, lrelu, fc, batch_norm, init_embedding_diction
 from .dataset import TrainDataProvider, InjectDataProvider
 from .utils import scale_back, merge, save_concat_images
 
-import time
-import matplotlib.image as mpimg
 
+import matplotlib.pyplot as plt
+import matplotlib.image as img
 
 
 # Auxiliary wrapper classes
@@ -24,9 +27,11 @@ LossHandle = namedtuple("LossHandle", ["d_loss", "g_loss",
                                        "const_loss", "l1_loss", "tv_loss", "ebdd_weight_loss","label_difference_net","label_difference_loss","label_difference_org",
                                        "category_loss", "real_category_loss", "fake_category_loss",
                                        "cheat_loss",])
-InputHandle = namedtuple("InputHandle", ["real_data", "validate_image","ebdd_weights_static","targeted_label"])
+InputHandle = namedtuple("InputHandle", ["real_data", "validate_image","ebdd_weights_static","targeted_label",
+                                         "weight_org_fig_placeholder","weight_net_fig_placeholder","weight_loss_fig_placeholder"])
 EvalHandle = namedtuple("EvalHandle", ["encoder","generator", "target", "source", "ebdd_dictionary"])
-SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged","valiadte_image_merged"])
+SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged","valiadte_image_merged",
+                                             "weight_org_fig","weight_net_fig","weight_loss_fig"])
 
 DebugHandle = namedtuple("DebugHandle", ["ebdd_weights_org", "ebdd_weights_1norm",
                                          "ebdd_weights_net", "ebdd_weights_net_1norm",
@@ -73,6 +78,7 @@ class UNet(object):
         self.checkpoint_dir = os.path.join(self.experiment_dir, "checkpoint")
         self.sample_dir = os.path.join(self.experiment_dir, "sample")
         self.log_dir = os.path.join(self.experiment_dir, "logs")
+        self.weight_bar_dir = os.path.join(self.experiment_dir,"weight_bar")
         if not os.path.exists(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
             print("new checkpoint directory created")
@@ -82,7 +88,9 @@ class UNet(object):
         if not os.path.exists(self.sample_dir):
             os.makedirs(self.sample_dir)
             print("new sample directory created")
-
+        if not os.path.exists(self.weight_bar_dir):
+            os.makedirs(self.weight_bar_dir)
+            print("new weight bar directory created")
 
 
 
@@ -138,17 +146,19 @@ class UNet(object):
         self.counter=0
         self.print_separater="################################################################"
 
-        id, self.checkpoint_dir, self.log_dir, self.sample_dir = self.get_model_id_and_dir()
+        id, self.checkpoint_dir, self.log_dir, self.sample_dir, self.weight_bar_dir = self.get_model_id_and_dir()
         if self.resume_training == 0 and os.path.exists(self.log_dir):
             shutil.rmtree(self.checkpoint_dir)
             shutil.rmtree(self.log_dir)
             shutil.rmtree(self.sample_dir)
-            print("new model ckpt / log / sample directories removed for %s" % id )
+            shutil.rmtree(self.weight_bar_dir)
+            print("new model ckpt / log / sample / weight bar directories removed for %s" % id )
         if not os.path.exists(self.log_dir):
             os.makedirs(self.checkpoint_dir)
             os.makedirs(self.log_dir)
             os.makedirs(self.sample_dir)
-            print("new model ckpt / log / sample directories created for %s" % id)
+            os.makedirs(self.weight_bar_dir)
+            print("new model ckpt / log / sample / weight bar directories created for %s" % id)
 
     def encoder(self, images, is_training, reuse=False):
         with tf.variable_scope("generator"):
@@ -255,10 +265,8 @@ class UNet(object):
 
         ebdd_weights_static=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="gen_ebdd_weights_static")
         ebdd_weights_dynamic=init_embedding_weights(size=[1,self.font_num_for_train],name="gen_ebdd_weights_dynamic")
-        if self.running_mode==0 or self.running_mode==1:
-            targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="target_label")
-        else:
-            targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_fine_tune),name="target_label")
+        targeted_label=tf.placeholder(tf.float32, shape=(self.batch_size,self.font_num_for_train), name="target_label")
+
 
 
         if self.freeze_ebdd_weights==True:
@@ -406,9 +414,13 @@ class UNet(object):
 
 
 
-
-
-
+        weight_org_fig_placeholder = tf.placeholder(tf.float32,[1,900,1200,4])
+        weight_net_fig_placeholder = tf.placeholder(tf.float32, [1, 900,1200,4])
+        weight_loss_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
+        weight_org_fig_summary = tf.summary.image('weight_org_fig',weight_org_fig_placeholder)
+        weight_net_fig_summary = tf.summary.image('weight_net_fig', weight_net_fig_placeholder)
+        weight_loss_fig_summary = tf.summary.image('weight_loss_fig', weight_loss_fig_placeholder)
+        #weight_fig_merged = tf.summary.merge([weight_org_fig_summary,weight_net_fig_summary,weight_loss_fig_summary])
 
 
 
@@ -416,6 +428,9 @@ class UNet(object):
 
         validate_image = tf.placeholder(tf.float32,[1,self.batch_size*self.input_width,self.input_width+self.output_width,3])
         validate_image_summary = tf.summary.image('Validate_Image',validate_image)
+
+
+
 
 
         d_merged_summary = tf.summary.merge([d_loss_real_summary, d_loss_fake_summary,
@@ -464,7 +479,11 @@ class UNet(object):
         input_handle = InputHandle(real_data=real_data,
                                    validate_image=validate_image,
                                    ebdd_weights_static=ebdd_weights_static,
-                                   targeted_label=targeted_label)
+                                   targeted_label=targeted_label,
+                                   weight_org_fig_placeholder=weight_org_fig_placeholder,
+                                   weight_net_fig_placeholder=weight_net_fig_placeholder,
+                                   weight_loss_fig_placeholder=weight_loss_fig_placeholder
+                                   )
 
 
         loss_handle = LossHandle(d_loss=d_loss,
@@ -489,11 +508,15 @@ class UNet(object):
 
         summary_handle = SummaryHandle(d_merged=d_merged_summary,
                                        g_merged=g_merged_summary,
-                                       valiadte_image_merged=validate_image_summary)
+                                       valiadte_image_merged=validate_image_summary,
+                                       weight_org_fig=weight_org_fig_summary,
+                                       weight_net_fig=weight_net_fig_summary,
+                                       weight_loss_fig=weight_loss_fig_summary)
 
         debug_handle = DebugHandle(ebdd_weights_org=ebdd_weights_org, ebdd_weights_1norm=ebdd_weights_1norm,
                                    ebdd_weights_net=ebdd_weights_for_net, ebdd_weights_net_1norm=ebdd_weights_for_net_1norm,
-                                   ebdd_weights_loss=ebdd_weights_for_loss, ebdd_weights_loss_1norm=ebdd_weights_for_loss_1norm)
+                                   ebdd_weights_loss=ebdd_weights_for_loss, ebdd_weights_loss_1norm=ebdd_weights_for_loss_1norm,
+                                   )
 
         # those operations will be shared, so we need
         # to make them visible globally
@@ -572,7 +595,8 @@ class UNet(object):
         model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
         model_log_dir = os.path.join(self.log_dir, model_id)
         model_sample_dir = os.path.join(self.sample_dir, model_id)
-        return model_id,model_ckpt_dir,model_log_dir,model_sample_dir
+        model_weight_bar_dir = os.path.join(self.weight_bar_dir,model_id)
+        return model_id,model_ckpt_dir,model_log_dir,model_sample_dir,model_weight_bar_dir
 
     def checkpoint(self, saver):
         model_name = "unet.model"
@@ -874,12 +898,28 @@ class UNet(object):
                                                        targeted_label:labels
                                                        })
 
-                    # print(debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels}))
-                    # print(debug_handle.ebdd_weights_1norm.eval(feed_dict={ebdd_weights_static: labels}))
-                    # print(debug_handle.ebdd_weights_batch.eval(feed_dict={ebdd_weights_static: labels}))
-                    # print(debug_handle.ebdd_weights_batch_1norm.eval(feed_dict={ebdd_weights_static: labels}))
-                    # print(debug_handle.ebdd_weights_batch_normed.eval(feed_dict={ebdd_weights_static: labels}))
-                    # print(debug_handle.ebdd_weights_batch_normed_1norm.eval(feed_dict={ebdd_weights_static: labels}))
+                    # print(debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels})[0,:])
+                    # print(debug_handle.ebdd_weights_net.eval(feed_dict={ebdd_weights_static: labels})[0, :])
+                    # print(debug_handle.ebdd_weights_loss.eval(feed_dict={ebdd_weights_static: labels})[0, :])
+                    # print(labels[0, :])
+
+                    # weight_bar_path_org = self.weight_plot_and_save(prefix="org_",weight_to_plot=debug_handle.ebdd_weights_org.eval(feed_dict={ebdd_weights_static: labels})[0,:],epoch=ei)
+                    # weight_bar_org = self.png_read(weight_bar_path_org)
+                    # weight_org_fig_out=self.sess.run(summary_handle.weight_org_fig,feed_dict={input_handle.weight_org_fig_placeholder:weight_bar_org})
+                    # summary_writer.add_summary(weight_org_fig_out,self.counter)
+                    #
+                    # weight_bar_path_net = self.weight_plot_and_save(prefix="net_",weight_to_plot=debug_handle.ebdd_weights_net.eval(feed_dict={ebdd_weights_static: labels})[0, :],epoch=ei)
+                    # weight_bar_net = self.png_read(weight_bar_path_net)
+                    # weight_net_fig_out = self.sess.run(summary_handle.weight_net_fig,feed_dict={input_handle.weight_net_fig_placeholder: weight_bar_net})
+                    # summary_writer.add_summary(weight_net_fig_out, self.counter)
+                    #
+                    # weight_bar_path_loss = self.weight_plot_and_save(prefix="loss_",weight_to_plot=debug_handle.ebdd_weights_loss.eval(feed_dict={ebdd_weights_static: labels})[0, :],epoch=ei)
+                    # weight_bar_loss = self.png_read(weight_bar_path_loss)
+                    # weight_loss_fig_out = self.sess.run(summary_handle.weight_loss_fig,feed_dict={input_handle.weight_loss_fig_placeholder: weight_bar_loss})
+                    # summary_writer.add_summary(weight_loss_fig_out, self.counter)
+
+
+                    summary_writer.flush()
 
                 else:
                     # Optimize D
@@ -930,6 +970,8 @@ class UNet(object):
                     # print(debug_handle.ebdd_weights_loss.eval()[0, :])
                     # print(labels[0, :])
 
+
+
                 passed_full = time.time() - start_time
                 passed_itr = time.time() - this_itr_start
                 current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
@@ -971,6 +1013,27 @@ class UNet(object):
                     summary_writer.add_summary(summary_image,self.counter)
                     summary_writer.flush()
 
+
+
+                    if self.freeze_ebdd_weights==False:
+                        weight_bar_path_org = self.weight_plot_and_save(prefix="org_",weight_to_plot=debug_handle.ebdd_weights_org.eval()[0, :], epoch=ei)
+                        weight_bar_org = self.png_read(weight_bar_path_org)
+                        weight_org_fig_out = self.sess.run(summary_handle.weight_org_fig, feed_dict={input_handle.weight_org_fig_placeholder: weight_bar_org})
+                        summary_writer.add_summary(weight_org_fig_out, self.counter)
+
+                        weight_bar_path_net = self.weight_plot_and_save(prefix="net_",weight_to_plot=debug_handle.ebdd_weights_net.eval()[0, :], epoch=ei)
+                        weight_bar_net = self.png_read(weight_bar_path_net)
+                        weight_net_fig_out = self.sess.run(summary_handle.weight_net_fig, feed_dict={input_handle.weight_net_fig_placeholder: weight_bar_net})
+                        summary_writer.add_summary(weight_net_fig_out, self.counter)
+
+                        weight_bar_path_loss = self.weight_plot_and_save(prefix="loss_",weight_to_plot=debug_handle.ebdd_weights_loss.eval()[0, :], epoch=ei)
+                        weight_bar_loss = self.png_read(weight_bar_path_loss)
+                        weight_loss_fig_out = self.sess.run(summary_handle.weight_loss_fig, feed_dict={input_handle.weight_loss_fig_placeholder: weight_bar_loss})
+                        summary_writer.add_summary(weight_loss_fig_out, self.counter)
+
+                        summary_writer.flush()
+
+
                 if self.counter % self.checkpoint_steps == 0:
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     print("Time:%s, Checkpoint: save checkpoint step %d" % (current_time,self.counter))
@@ -991,5 +1054,31 @@ class UNet(object):
         output_one_hot_label=np.zeros((len(input_label),label_length),dtype=np.float32)
         output_one_hot_label[np.arange(len(input_label)),input_label]=1
         return output_one_hot_label
+
+
+    def weight_plot_and_save(self,prefix,weight_to_plot,epoch):
+        y_pos=np.arange(len(weight_to_plot))
+        plt.figure(figsize=(12,9),dpi=100)
+
+        plt.bar(y_pos,weight_to_plot,align='center',alpha=0.5)
+        plt.xticks(y_pos)
+
+        fig_save_path = os.path.join(self.weight_bar_dir, prefix+"weight_bar_%02d_%04d.png" % (epoch, self.counter))
+
+        plt.savefig(fig_save_path,format='png')
+
+        plt.close()
+
+        return fig_save_path
+
+    def png_read(self,path):
+        image = img.imread(path)
+        image_shape=image.shape
+        shape0=int(image_shape[0])
+        shape1 = int(image_shape[1])
+        shape2 = int(image_shape[2])
+        image=image.reshape(1,shape0,shape1,shape2)
+        return image
+
 
 

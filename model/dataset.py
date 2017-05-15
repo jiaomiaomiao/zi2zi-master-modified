@@ -93,7 +93,7 @@ class TrainDataProvider(object):
 
         if not sub_train_set_num==-1 and full_train_mark==False:
             print("sub training set: @ %d are trained" % (sub_train_set_num))
-            self.train.examples=self.train.examples[0:sub_train_set_num]
+            self.train.examples=random.sample(self.train.examples,sub_train_set_num)
 
         print("train examples -> %d, val examples -> %d" % (len(self.train.examples), len(self.val.examples)))
 
