@@ -97,6 +97,14 @@ class TrainDataProvider(object):
 
         print("train examples -> %d, val examples -> %d" % (len(self.train.examples), len(self.val.examples)))
 
+
+
+    def get_total_epoch_num(self,itr_num=-1,batch_size=-1):
+        epoch_num = int(np.ceil(itr_num / np.ceil(len(self.train.examples) / batch_size)))
+        print ("Epoch Num:%d, Itr Num:%d" % (epoch_num, itr_num) )
+        return epoch_num
+
+
     def get_train_iter(self, batch_size, shuffle=True):
         training_examples = self.train.examples[:]
         if shuffle:

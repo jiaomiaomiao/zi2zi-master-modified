@@ -45,11 +45,13 @@ class UNet(object):
                  running_mode=-1,
                  base_trained_model_dir='./experiment/checkpoint',
 
-                 experiment_dir=None, experiment_id=0,
+                 experiment_dir=None, experiment_id='0',
                  train_obj_name='train_debug.obj', val_obj_name='val_debug.obj',
-                 sample_steps=500, checkpoint_steps=500,
 
-                 batch_size=16,lr=0.001,epoch=30,schedule=10,
+                 sample_steps=500, checkpoint_steps=500,
+                 optimization_method='adam',
+
+                 batch_size=16,lr=0.001,itrs=2000,schedule=10,
 
                  input_width=256, output_width=256, input_filters=3, output_filters=3,
                  generator_dim=64, discriminator_dim=64,ebdd_dictionary_dim=128,
@@ -99,11 +101,12 @@ class UNet(object):
         self.val_obj_name = val_obj_name
         self.sample_steps = sample_steps
         self.checkpoint_steps = checkpoint_steps
+        self.optimization_method=optimization_method
 
 
         self.batch_size = batch_size
         self.lr=lr
-        self.epoch=epoch
+        self.itrs=itrs
         self.schedule=schedule
 
 
@@ -591,7 +594,7 @@ class UNet(object):
         return input_handle, loss_handle, eval_handle, summary_handle,debug_handle
 
     def get_model_id_and_dir(self):
-        model_id = "experiment_%d_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.running_mode)
+        model_id = "experiment_%s_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.running_mode)
         model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
         model_log_dir = os.path.join(self.log_dir, model_id)
         model_sample_dir = os.path.join(self.sample_dir, model_id)
@@ -795,8 +798,16 @@ class UNet(object):
             raise Exception("no session registered")
 
         learning_rate = tf.placeholder(tf.float32, name="learning_rate")
-        d_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.d_loss, var_list=d_vars)
-        g_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.g_loss, var_list=g_vars)
+
+
+        if self.optimization_method=='adam':
+            d_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.d_loss, var_list=d_vars)
+            g_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.g_loss, var_list=g_vars)
+        elif self.optimization_method=='gradient_descent':
+            d_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.d_loss, var_list=d_vars)
+            g_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.g_loss, var_list=g_vars)
+
+
         tf.global_variables_initializer().run()
         real_data = input_handle.real_data
         ebdd_weights_static = input_handle.ebdd_weights_static
@@ -809,6 +820,8 @@ class UNet(object):
             full_train_mark=False
         data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
                                           filter_by=self.fine_tune,full_train_mark=full_train_mark,sub_train_set_num=self.sub_train_set_num)
+        self.epoch = data_provider.get_total_epoch_num(self.itrs,self.batch_size)
+
         total_batches = data_provider.compute_total_batch_num(self.batch_size)
         val_batch_iter = data_provider.get_val_iter(self.batch_size)
 
@@ -1079,6 +1092,7 @@ class UNet(object):
         shape2 = int(image_shape[2])
         image=image.reshape(1,shape0,shape1,shape2)
         return image
+
 
 
 

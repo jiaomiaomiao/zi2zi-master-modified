@@ -6,25 +6,26 @@ import tensorflow as tf
 import argparse
 
 from model.unet import UNet
+
 input_args = ['--running_mode','1',
               '--base_trained_model_dir', './experiment/base_model_0/',
-              '--experiment_id','11790_adam',
+              '--experiment_id','fuckyou_hahaha',
 
-              '--train_name','train_full_train.obj',
-              '--val_name','val_full_train.obj',
+              '--train_name','train_debug.obj',
+              '--val_name','train_debug.obj',
 
-              '--batch_size', '16',
+              '--batch_size', '2',
 
               '--resume_training','0',
 
-              '--sample_steps','10',
-              '--checkpoint_steps','25',
-              '--itrs','2000',
-              #'--optimization_method','gradient_descent',
-              '--optimization_method','adam',
+              '--sample_steps','5',
+              '--checkpoint_steps','5',
+              '--itrs','1000',
+              '--optimization_method','gradient_descent',
+              #'--optimization_method','adam',
 
-              '--fine_tune','17',
-              '--sub_train_set_num','50',
+              '--fine_tune','0',
+              '--sub_train_set_num','-1',
 
               '--freeze_encoder','1',
               '--freeze_decoder','0',
@@ -130,7 +131,9 @@ def main(_):
                      base_trained_model_dir=args.base_trained_model_dir,
                      experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
                      train_obj_name=args.train_name, val_obj_name=args.val_name,
+
                      sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,
+                     optimization_method=args.optimization_method,
 
                      batch_size=args.batch_size,lr=args.lr,itrs=args.itrs,schedule=args.schedule,
 
