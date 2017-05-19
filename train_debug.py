@@ -7,12 +7,13 @@ import argparse
 
 from model.unet import UNet
 
-input_args = ['--running_mode','1',
+input_args = ['--running_mode','0',
               '--base_trained_model_dir', './experiment/base_model_0/',
-              '--experiment_id','fuckyou_hahaha',
 
-              '--train_name','train_debug.obj',
-              '--val_name','train_debug.obj',
+              '--experiment_id','0',
+
+              '--train_name','./experiment/font_binary_data/train_debug.obj',
+              '--val_name','./experiment/font_binary_data/train_debug.obj',
 
               '--batch_size', '2',
 
@@ -21,16 +22,16 @@ input_args = ['--running_mode','1',
               '--sample_steps','5',
               '--checkpoint_steps','5',
               '--itrs','1000',
-              '--optimization_method','gradient_descent',
-              #'--optimization_method','adam',
+              #'--optimization_method','gradient_descent',
+              '--optimization_method','adam',
 
               '--fine_tune','0',
               '--sub_train_set_num','-1',
 
-              '--freeze_encoder','1',
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','0'
+              '--freeze_ebdd_weights','1'
               ]
 
 
@@ -48,6 +49,7 @@ parser.add_argument('--experiment_dir', dest='experiment_dir', default='./experi
                     help='experiment directory, data, samples,checkpoints,etc')
 parser.add_argument('--experiment_id', dest='experiment_id', type=str,
                     help='sequence id for the experiments you prepare to run',required=True)
+
 
 # input data setting
 # parser.add_argument('--train_name',dest='train_name',type=str,default='train.obj')

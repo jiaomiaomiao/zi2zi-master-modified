@@ -6,12 +6,12 @@ import tensorflow as tf
 import argparse
 
 from model.unet import UNet
-input_args = ['--running_mode','1',
-              '--base_trained_model_dir', './experiment/base_model_0/',
+input_args = ['--running_mode','0',
+              '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/data_backup/base_model_0/',
               '--experiment_id','11790_adam',
 
-              '--train_name','train_full_train.obj',
-              '--val_name','val_full_train.obj',
+              '--train_name','/dataA/harric/Chinese_Character_Generation/data_backup/font_binary_data/train_full_train.obj',
+              '--val_name','/dataA/harric/Chinese_Character_Generation/data_backup/font_binary_data/val_full_train.obj',
 
               '--batch_size', '16',
 
@@ -19,17 +19,18 @@ input_args = ['--running_mode','1',
 
               '--sample_steps','10',
               '--checkpoint_steps','25',
-              '--itrs','2000',
+              '--itrs','5000',
+
               #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 
               '--fine_tune','17',
               '--sub_train_set_num','50',
 
-              '--freeze_encoder','1',
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','0'
+              '--freeze_ebdd_weights','1'
               ]
 
 

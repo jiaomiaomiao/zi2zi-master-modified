@@ -83,8 +83,10 @@ class TrainDataProvider(object):
                  filter_by=None, full_train_mark=True,sub_train_set_num=-1):
         self.data_dir = data_dir
         self.filter_by = filter_by
-        self.train = PickledImageProvider(os.path.join(self.data_dir, train_name),train_mark=True)
-        self.val = PickledImageProvider(os.path.join(self.data_dir, val_name),train_mark=False)
+        # self.train = PickledImageProvider(os.path.join(self.data_dir, train_name),train_mark=True)
+        # self.val = PickledImageProvider(os.path.join(self.data_dir, val_name),train_mark=False)
+        self.train = PickledImageProvider(train_name, train_mark=True)
+        self.val = PickledImageProvider(val_name, train_mark=False)
 
         if self.filter_by and full_train_mark==False:
             print("filter by label ->", filter_by)
