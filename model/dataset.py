@@ -80,7 +80,7 @@ def get_batch_iter(examples, batch_size, augment):
 
 class TrainDataProvider(object):
     def __init__(self, data_dir, train_name="train.obj", val_name="val.obj",
-                 filter_by=None, full_train_mark=True,sub_train_set_num=-1):
+                 filter_by=None, sub_train_set_num=-1):
         self.data_dir = data_dir
         self.filter_by = filter_by
         # self.train = PickledImageProvider(os.path.join(self.data_dir, train_name),train_mark=True)
@@ -88,16 +88,16 @@ class TrainDataProvider(object):
         self.train = PickledImageProvider(train_name, train_mark=True)
         self.val = PickledImageProvider(val_name, train_mark=False)
 
-        if self.filter_by and full_train_mark==False:
+        if self.filter_by:
             print("filter by label ->", filter_by)
             self.train.examples = filter(lambda e: e[0] in self.filter_by, self.train.examples)
             self.val.examples = filter(lambda e: e[0] in self.filter_by, self.val.examples)
 
-        if not sub_train_set_num==-1 and full_train_mark==False:
-            print("sub training set: @ %d are trained" % (sub_train_set_num))
-            self.train.examples=random.sample(self.train.examples,sub_train_set_num)
+        if not sub_train_set_num==-1:
+            print("sub training set: @ %d for each label are trained" % (sub_train_set_num))
+            self.train.examples=random.sample(self.train.examples,sub_train_set_num*len(self.filter_by))
 
-        print("train examples -> %d, val examples -> %d" % (len(self.train.examples), len(self.val.examples)))
+        print("in total train examples -> %d, val examples -> %d" % (len(self.train.examples), len(self.val.examples)))
 
 
 

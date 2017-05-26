@@ -11,7 +11,7 @@ from model.unet import UNet
 input_args = ['--running_mode','1',
               '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
 
-              '--experiment_id','20_fonts_2000_each_encoder_freeze',
+              '--experiment_id','20_fonts_2000_each_encoder_not_freeze',
 
               '--train_name','/dataA/harric/Chinese_Character_Generation/BaseModels/font_binary_data/train_full_train.obj',
               '--val_name','/dataA/harric/Chinese_Character_Generation/BaseModels/font_binary_data/val_full_train.obj',
@@ -23,7 +23,7 @@ input_args = ['--running_mode','1',
               '--sample_steps','25',
               '--checkpoint_steps','100',
               '--itrs','10000',
-              '--schedule','10',
+              '--schedule','5',
               #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 
@@ -32,7 +32,7 @@ input_args = ['--running_mode','1',
               #'--fine_tune','0,1,2',
               '--sub_train_set_num','2000',
 
-              '--freeze_encoder','1',
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               ]
 

@@ -23,7 +23,7 @@ input_args = ['--running_mode','1',
               '--sample_steps','25',
               '--checkpoint_steps','100',
               '--itrs','10000',
-              '--schedule','10',
+              '--schedule','5',
               #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 

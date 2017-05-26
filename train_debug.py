@@ -4,10 +4,11 @@ from __future__ import absolute_import
 
 import tensorflow as tf
 import argparse
+import numpy as np
 
 from model.unet import UNet
 
-input_args = ['--running_mode','0',
+input_args = ['--running_mode','1',
               '--base_trained_model_dir', './experiment/base_model_0/',
 
               '--experiment_id','0',
@@ -19,19 +20,20 @@ input_args = ['--running_mode','0',
 
               '--resume_training','0',
 
-              '--sample_steps','5',
+              '--sample_steps','1',
               '--checkpoint_steps','5',
               '--itrs','1000',
+              '--schedule','10',
               #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 
-              '--fine_tune','0',
-              '--sub_train_set_num','-1',
+              '--font_num_for_train','5',
+              #'--fine_tune','0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
+              '--fine_tune','1,3,4',
+              '--sub_train_set_num','10',
 
-              '--freeze_encoder','0',
+              '--freeze_encoder','1',
               '--freeze_decoder','0',
-              '--freeze_discriminator','0',
-              '--freeze_ebdd_weights','1'
               ]
 
 
@@ -66,10 +68,8 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, default=20,
+parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, required=True,
                     help="number for distinct fonts for train")
-parser.add_argument('--font_num_for_fine_tune', dest='font_num_for_fine_tune', type=int, default=1,
-                    help="number for distinct fonts for fine_tune")
 parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
                     help="dimension for ebdd dictionary")
 
@@ -78,7 +78,7 @@ parser.add_argument('--itrs', dest='itrs', type=int, required=True, help='number
 parser.add_argument('--batch_size', dest='batch_size', type=int, help='number of examples in batch',required=True)
 parser.add_argument('--lr', dest='lr', type=float, default=0.001, help='initial learning rate')
 parser.add_argument('--optimization_method',type=str,required=True,help='optimization method selection')
-parser.add_argument('--schedule', dest='schedule', type=int, default=10, help='number of epochs to half learning rate')
+parser.add_argument('--schedule', dest='schedule', type=int, required=True, help='number of epochs to half learning rate')
 parser.add_argument('--resume_training', dest='resume_training', type=int, help='resume from previous training',required=True)
 parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',type=str,required=True,
                     help='resume data from what dir')
@@ -107,9 +107,9 @@ parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, require
                     help="freeze encoder weights during training")
 parser.add_argument('--freeze_decoder', dest='freeze_decoder', type=int, required=True,
                     help="freeze decoder weights during training")
-parser.add_argument('--freeze_discriminator', dest='freeze_discriminator', type=int, required=True,
+parser.add_argument('--freeze_discriminator', dest='freeze_discriminator', type=int, default=False,
                     help="freeze discriminator weights during training")
-parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=int, required=True,
+parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=int, default=-1,
                     help="freeze ebdd weights during training")
 
 
@@ -122,10 +122,10 @@ def main(_):
     config.gpu_options.allow_growth = True
 
     with tf.Session(config=config) as sess:
-        fine_tune_list = None
-        if not args.fine_tune == '-1':
-            ids = args.fine_tune.split(",")
-            fine_tune_list = set([int(i) for i in ids])
+
+
+        ids = args.fine_tune.split(",")
+        fine_tune_list = set([int(i) for i in ids])
 
 
 
@@ -148,19 +148,15 @@ def main(_):
 
 
 
-                     font_num_for_train=args.font_num_for_train,font_num_for_fine_tune=args.font_num_for_fine_tune,
+                     font_num_for_train=args.font_num_for_train,
 
 
                      resume_training=args.resume_training,
+                     freeze_encoder=args.freeze_encoder, freeze_decoder=args.freeze_decoder,
 
 
                      fine_tune=fine_tune_list,
-                     sub_train_set_num=args.sub_train_set_num,
-
-                     freeze_encoder=args.freeze_encoder,
-                     freeze_decoder=args.freeze_decoder,
-                     freeze_discriminator=args.freeze_discriminator,
-                     freeze_ebdd_weights=args.freeze_ebdd_weights)
+                     sub_train_set_num=args.sub_train_set_num)
         model.register_session(sess)
         model.build_model()
 

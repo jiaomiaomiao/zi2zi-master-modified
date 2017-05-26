@@ -16,7 +16,6 @@ from .ops import conv2d, deconv2d, lrelu, fc, batch_norm, init_embedding_diction
 from .dataset import TrainDataProvider, InjectDataProvider
 from .utils import scale_back, merge, save_concat_images
 
-from PIL import Image
 
 import matplotlib.pyplot as plt
 import matplotlib.image as img
@@ -28,14 +27,16 @@ LossHandle = namedtuple("LossHandle", ["d_loss", "g_loss",
                                        "const_loss", "l1_loss", "tv_loss", "ebdd_weight_loss",
                                        "category_loss", "real_category_loss", "fake_category_loss",
                                        "cheat_loss",])
-InputHandle = namedtuple("InputHandle", ["real_data", "check_validate_image","check_train_image","ebdd_weights_static","targeted_label",
-                                         "ebdd_weights_dynamic_bar_placeholder"])
+InputHandle = namedtuple("InputHandle", ["real_data", "validate_image","ebdd_weights_static","targeted_label",
+                                         "weight_org_fig_placeholder","weight_net_fig_placeholder","weight_loss_fig_placeholder"])
 EvalHandle = namedtuple("EvalHandle", ["encoder","generator", "target", "source", "ebdd_dictionary"])
 
-SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged","check_validate_image","check_train_image",
-                                             "ebdd_weights_dynamic_bar"])
+SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged","valiadte_image_merged",
+                                             "weight_org_fig","weight_net_fig","weight_loss_fig"])
 
-DebugHandle = namedtuple("DebugHandle", ["ebdd_weights_dynamic"])
+DebugHandle = namedtuple("DebugHandle", ["ebdd_weights_org",
+                                         "ebdd_weights_net",
+                                         "ebdd_weights_loss"])
 
 eps= 1e-3
 
@@ -58,22 +59,27 @@ class UNet(object):
 
                  L1_penalty=100, Lconst_penalty=15, Ltv_penalty=0.0,ebdd_weight_penalty=1.0,
 
-                 font_num_for_train=20,
+                 font_num_for_train=20, font_num_for_fine_tune=1,
 
                  resume_training=True,
 
-                 freeze_encoder=False, freeze_decoder=False,
+
 
                  fine_tune=None,
-                 sub_train_set_num=-1):
+                 sub_train_set_num=-1,
+
+                 freeze_encoder=False,
+                 freeze_decoder=False,
+                 freeze_discriminator=False,
+                 freeze_ebdd_weights=True
+                 ):
         self.running_mode = running_mode
         self.base_trained_model_dir = base_trained_model_dir
         self.experiment_dir = experiment_dir
         self.experiment_id = experiment_id
         self.data_dir = os.path.join(self.experiment_dir, "font_binary_data")
         self.checkpoint_dir = os.path.join(self.experiment_dir, "checkpoint")
-        self.check_validate_dir = os.path.join(self.experiment_dir, "check_validate")
-        self.check_train_dir = os.path.join(self.experiment_dir, "check_train")
+        self.sample_dir = os.path.join(self.experiment_dir, "sample")
         self.log_dir = os.path.join(self.experiment_dir, "logs")
         self.weight_bar_dir = os.path.join(self.experiment_dir,"weight_bar")
         if not os.path.exists(self.checkpoint_dir):
@@ -82,12 +88,9 @@ class UNet(object):
         if not os.path.exists(self.log_dir):
             os.makedirs(self.log_dir)
             print("new log directory created")
-        if not os.path.exists(self.check_validate_dir):
-            os.makedirs(self.check_validate_dir)
-            print("new check_validate_dir directory created")
-        if not os.path.exists(self.check_train_dir):
-            os.makedirs(self.check_train_dir)
-            print("new check_train_dir directory created")
+        if not os.path.exists(self.sample_dir):
+            os.makedirs(self.sample_dir)
+            print("new sample directory created")
         if not os.path.exists(self.weight_bar_dir):
             os.makedirs(self.weight_bar_dir)
             print("new weight bar directory created")
@@ -99,7 +102,6 @@ class UNet(object):
         self.val_obj_name = val_obj_name
         self.sample_steps = sample_steps
         self.checkpoint_steps = checkpoint_steps
-        self.summary_steps=10
         self.optimization_method=optimization_method
 
 
@@ -127,8 +129,7 @@ class UNet(object):
 
 
         self.font_num_for_train = font_num_for_train
-        self.font_num_for_fine_tune_max = font_num_for_train
-        # self.font_num_for_fine_tune_max = 1
+        self.font_num_for_fine_tune = font_num_for_fine_tune
 
         self.resume_training = resume_training
 
@@ -137,19 +138,10 @@ class UNet(object):
         self.fine_tune=fine_tune
         self.sub_train_set_num=sub_train_set_num
 
-
-
-        if self.running_mode==0:
-            self.freeze_ebdd_weights = 1
-            self.freeze_encoder = 0
-            self.freeze_decoder = 0
-        else:
-            self.freeze_ebdd_weights = 0
-            self.freeze_encoder = freeze_encoder
-            self.freeze_decoder = freeze_decoder
-
-        self.freeze_discriminator=0
-
+        self.freeze_encoder=freeze_encoder
+        self.freeze_decoder = freeze_decoder
+        self.freeze_discriminator = freeze_discriminator
+        self.freeze_ebdd_weights = freeze_ebdd_weights
 
 
 
@@ -158,19 +150,17 @@ class UNet(object):
         self.counter=0
         self.print_separater="####################################################################"
 
-        id, self.checkpoint_dir, self.log_dir, self.check_validate_dir, self.check_train_dir, self.weight_bar_dir = self.get_model_id_and_dir()
+        id, self.checkpoint_dir, self.log_dir, self.sample_dir, self.weight_bar_dir = self.get_model_id_and_dir()
         if self.resume_training == 0 and os.path.exists(self.log_dir):
             shutil.rmtree(self.checkpoint_dir)
             shutil.rmtree(self.log_dir)
-            shutil.rmtree(self.check_validate_dir)
-            shutil.rmtree(self.check_train_dir)
+            shutil.rmtree(self.sample_dir)
             shutil.rmtree(self.weight_bar_dir)
             print("new model ckpt / log / sample / weight bar directories removed for %s" % id )
         if not os.path.exists(self.log_dir):
             os.makedirs(self.checkpoint_dir)
             os.makedirs(self.log_dir)
-            os.makedirs(self.check_validate_dir)
-            os.makedirs(self.check_train_dir)
+            os.makedirs(self.sample_dir)
             os.makedirs(self.weight_bar_dir)
             print("new model ckpt / log / sample / weight bar directories created for %s" % id)
 
@@ -269,19 +259,17 @@ class UNet(object):
             return tf.nn.sigmoid(fc1), fc1, fc2
 
     def multi_embedding_weights_init(self):
-
-
-        ebdd_weights_static = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="gen_ebdd_weights_static")
-        ebdd_weights_dynamic = init_embedding_weights(size=[self.font_num_for_fine_tune_max, self.font_num_for_train],name="gen_ebdd_weights_dynamic")
-
+        ebdd_weights_static = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),
+                                             name="gen_ebdd_weights_static")
+        ebdd_weights_dynamic = init_embedding_weights(size=[1, self.font_num_for_train],
+                                                      name="gen_ebdd_weights_dynamic")
         if self.freeze_ebdd_weights == True:
             ebdd_weights_org = ebdd_weights_static
             ebdd_weights_batch_normed = weight_norm(ebdd_weights_org)
             ebdd_weights_for_net = ebdd_weights_batch_normed
             ebdd_weights_for_loss = ebdd_weights_batch_normed
         else:
-            static_label_non_one_hot=tf.argmax(ebdd_weights_static,axis=1)
-            ebdd_weights_org=tf.nn.embedding_lookup(ebdd_weights_dynamic,ids=static_label_non_one_hot)
+            ebdd_weights_org = tf.matmul(tf.ones([self.batch_size, 1], dtype=tf.float32), ebdd_weights_dynamic)
             ebdd_weights_for_loss = tf.nn.softmax(ebdd_weights_org)
             ebdd_weights_for_net = weight_norm(ebdd_weights_org)
 
@@ -313,16 +301,12 @@ class UNet(object):
         ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist", ebdd_weights_for_net)
         ebdd_weights_hist_loss_summary = tf.summary.histogram("ebdd_weight_loss_hist", ebdd_weights_for_loss)
 
-        # weight_org_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
-        # weight_net_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
-        # weight_loss_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
-        # weight_org_fig_summary = tf.summary.image('weight_org_fig', weight_org_fig_placeholder)
-        # weight_net_fig_summary = tf.summary.image('weight_net_fig', weight_net_fig_placeholder)
-        # weight_loss_fig_summary = tf.summary.image('weight_loss_fig', weight_loss_fig_placeholder)
-
-        ebdd_weights_dynamic_bar_placeholder = tf.placeholder(tf.float32, [1, 900 * len(self.fine_tune), 1200, 4])
-        ebdd_weights_dynamic_bar_summary = tf.summary.image("ebdd_weights_dynamic",
-                                                            ebdd_weights_dynamic_bar_placeholder)
+        weight_org_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
+        weight_net_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
+        weight_loss_fig_placeholder = tf.placeholder(tf.float32, [1, 900, 1200, 4])
+        weight_org_fig_summary = tf.summary.image('weight_org_fig', weight_org_fig_placeholder)
+        weight_net_fig_summary = tf.summary.image('weight_net_fig', weight_net_fig_placeholder)
+        weight_loss_fig_summary = tf.summary.image('weight_loss_fig', weight_loss_fig_placeholder)
 
 
         ebdd_dictionary = init_embedding_dictionary(self.font_num_for_train, self.ebdd_dictionary_dim)
@@ -403,30 +387,29 @@ class UNet(object):
 
         # embedding weight loss && difference checker
         ebdd_weight_loss = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_org,axis=1),tf.ones([self.batch_size],dtype=tf.float32)))) * self.ebdd_weight_penalty
-
         ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_weight_loss)
-
-        ebdd_weight_dynamic_difference_from_one = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_dynamic,axis=1),tf.ones([self.font_num_for_fine_tune_max],dtype=tf.float32)))) * self.ebdd_weight_penalty
-        ebdd_weight_dynamic_difference_from_one_summary = tf.summary.scalar("ebdd_weight_dynamic_difference_from_one",ebdd_weight_dynamic_difference_from_one)
-
         targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="target_label")
         if self.running_mode==1:
             label_difference_org = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_org)))
             label_difference_net = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_net)))
             label_difference_loss = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_loss)))
-            ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org_batch", label_difference_org)
-            ebdd_label_diff_net_summary = tf.summary.scalar("ebdd_label_diff_net_batch", label_difference_net)
-            ebdd_label_diff_loss_summary = tf.summary.scalar("ebdd_label_diff_loss_batch", label_difference_loss)
+            ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org", label_difference_org)
+            ebdd_label_diff_net_summary = tf.summary.scalar("ebdd_label_diff_net", label_difference_net)
+            ebdd_label_diff_loss_summary = tf.summary.scalar("ebdd_label_diff_loss", label_difference_loss)
 
             fine_tune_list = list()
             for ii in self.fine_tune:
                 fine_tune_list.append(ii)
 
-            ebdd_weight_checker_summary=list()
-            for travelling_label in self.fine_tune:
-
-                checker_name=("ebdd_weight_checker@Label%d" % travelling_label)
-                ebdd_weight_checker_summary.append(tf.summary.scalar(checker_name,ebdd_weights_dynamic[travelling_label,travelling_label]))
+            weight_checker_for_org = ebdd_weights_org[0, fine_tune_list[0]]
+            weight_checker_for_net = ebdd_weights_for_net[0, fine_tune_list[0]]
+            weight_checker_for_loss = ebdd_weights_for_loss[0, fine_tune_list[0]]
+            ebdd_weight_checker_for_org_summary = tf.summary.scalar("ebdd_weight_checker_for_org",
+                                                                    weight_checker_for_org)
+            ebdd_weight_checker_for_net_summary = tf.summary.scalar("ebdd_weight_checker_for_net",
+                                                                    weight_checker_for_net)
+            ebdd_weight_checker_for_loss_summary = tf.summary.scalar("ebdd_weight_checker_for_loss",
+                                                                     weight_checker_for_loss)
 
 
 
@@ -444,12 +427,8 @@ class UNet(object):
 
 
 
-
-        check_train_image = tf.placeholder(tf.float32,[1, self.batch_size * self.input_width, self.input_width + self.output_width,3])
-        check_train_image_summary = tf.summary.image('Check_Train_Image', check_train_image)
-        check_validate_image = tf.placeholder(tf.float32,[1,self.batch_size*self.input_width,self.input_width+self.output_width,3])
-        check_validate_image_summary = tf.summary.image('Check_Validate_Image',check_validate_image)
-
+        validate_image = tf.placeholder(tf.float32,[1,self.batch_size*self.input_width,self.input_width+self.output_width,3])
+        validate_image_summary = tf.summary.image('Validate_Image',validate_image)
 
 
 
@@ -462,7 +441,6 @@ class UNet(object):
         g_merged_summary = tf.summary.merge([l1_loss_summary, const_loss_summary,
                                              ebdd_weight_loss_summary,
                                              ebdd_weights_hist_org_summary, ebdd_weights_hist_net_summary,ebdd_weights_hist_loss_summary,
-                                             ebdd_weight_dynamic_difference_from_one_summary,
                                              tv_loss_summary,
                                              cheat_loss_summary,
                                              fake_category_loss_summary,
@@ -470,20 +448,22 @@ class UNet(object):
 
         if self.running_mode==1:
             g_merged_summary = tf.summary.merge([g_merged_summary,
-                                                 ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary])
-
-            for travelling_summary in ebdd_weight_checker_summary:
-                g_merged_summary = tf.summary.merge([g_merged_summary,travelling_summary])
+                                                 ebdd_label_diff_org_summary,ebdd_label_diff_net_summary,ebdd_label_diff_loss_summary,
+                                                 ebdd_weight_checker_for_org_summary,
+                                                 ebdd_weight_checker_for_net_summary,
+                                                 ebdd_weight_checker_for_loss_summary])
 
 
 
         # expose useful nodes in the graph as handles globally
         input_handle = InputHandle(real_data=real_data,
-                                   check_validate_image=check_validate_image,
-                                   check_train_image=check_train_image,
+                                   validate_image=validate_image,
                                    ebdd_weights_static=ebdd_weights_static,
                                    targeted_label=targeted_label,
-                                   ebdd_weights_dynamic_bar_placeholder=ebdd_weights_dynamic_bar_placeholder)
+                                   weight_org_fig_placeholder=weight_org_fig_placeholder,
+                                   weight_net_fig_placeholder=weight_net_fig_placeholder,
+                                   weight_loss_fig_placeholder=weight_loss_fig_placeholder
+                                   )
 
 
         loss_handle = LossHandle(d_loss=d_loss,
@@ -505,11 +485,15 @@ class UNet(object):
 
         summary_handle = SummaryHandle(d_merged=d_merged_summary,
                                        g_merged=g_merged_summary,
-                                       check_validate_image=check_validate_image_summary,
-                                       check_train_image=check_train_image_summary,
-                                       ebdd_weights_dynamic_bar=ebdd_weights_dynamic_bar_summary)
+                                       valiadte_image_merged=validate_image_summary,
+                                       weight_org_fig=weight_org_fig_summary,
+                                       weight_net_fig=weight_net_fig_summary,
+                                       weight_loss_fig=weight_loss_fig_summary)
 
-        debug_handle = DebugHandle(ebdd_weights_dynamic=ebdd_weights_dynamic)
+        debug_handle = DebugHandle(ebdd_weights_org=ebdd_weights_org,
+                                   ebdd_weights_net=ebdd_weights_for_net,
+                                   ebdd_weights_loss=ebdd_weights_for_loss,
+                                   )
 
         # those operations will be shared, so we need
         # to make them visible globally
@@ -521,77 +505,53 @@ class UNet(object):
 
 
 
-
+    def emdd_difference_checker(self):
+        return 1
 
     def register_session(self, sess):
         self.sess = sess
 
-    def retrieve_trainable_vars(self,freeze_encoder=False,freeze_decoder=False,freeze_discriminator=False,freeze_ebdd_weights=False):
+    def retrieve_trainable_vars(self, freeze_encoder=False, freeze_decoder=False,freeze_discriminator=False,freeze_ebdd_weights=False):
         t_vars = tf.trainable_variables()
+
         dis_vars = [var for var in t_vars if 'dis_' in var.name]
+        # gen_vars = [var for var in t_vars if 'gen_' in var.name]
         gen_enc_vals =  [var for var in t_vars if 'gen_enc' in var.name]
         gen_dec_vals =  [var for var in t_vars if 'gen_dec' in var.name]
-        gen_ebdd_dictionary_vals = [var for var in t_vars if 'gen_ebdd_dictionary' in var.name]
-        gen_ebdd_weights_vals = [var for var in t_vars if 'gen_ebdd_weights_dynamic' in var.name]
+        gen_ebdd_weights_vals = [var for var in t_vars if 'gen_ebdd_weights' in var.name]
 
 
 
-
-        gen_vars_trainable = list()
-        dis_vars_trainable = list()
-
-
+        gen_vars_1 = list()
+        dis_vars_1 = list()
 
         if freeze_encoder==0:
             print("Encoder Not Frozen")
-            gen_vars_trainable.extend(gen_enc_vals)
+            gen_vars_1.extend(gen_enc_vals)
         else:
             print("Encoder IS Frozen")
 
         if freeze_decoder==0:
             print("Decoder Not Frozen")
-            gen_vars_trainable.extend(gen_dec_vals)
+            gen_vars_1.extend(gen_dec_vals)
         else:
             print("Decoder IS Frozen")
 
 
         if freeze_discriminator==0:
             print("Discriminator Not Frozen")
-            dis_vars_trainable.extend(dis_vars)
+            dis_vars_1.extend(dis_vars)
         else:
             print("Discriminator IS Frozen")
 
         if freeze_ebdd_weights==0:
-            print("Embedding Weight Not Frozen")
-            gen_vars_trainable.extend(gen_ebdd_weights_vals)
+            print("ebdd Weight Not Frozen")
+            gen_vars_1.extend(gen_ebdd_weights_vals)
         else:
-            print("Embedding Weight IS Frozen")
+            print("Embedding weights IS Frozen")
 
-        return gen_vars_trainable, dis_vars_trainable, t_vars
 
-    # def retrive_saving_vars(self,freeze_encoder=False,freeze_decoder=False,freeze_discriminator=False,freeze_ebdd_weights=False):
-    #     t_vars = tf.trainable_variables()
-    #     dis_vars = [var for var in t_vars if 'dis_' in var.name]
-    #     gen_enc_vals = [var for var in t_vars if 'gen_enc' in var.name]
-    #     gen_dec_vals = [var for var in t_vars if 'gen_dec' in var.name]
-    #     gen_ebdd_dictionary_vals = [var for var in t_vars if 'gen_ebdd_dictionary' in var.name]
-    #     gen_ebdd_weights_vals = [var for var in t_vars if 'gen_ebdd_weights_dynamic' in var.name]
-    #
-    #     non_embedding_weight_saving_vars=list()
-    #     all_saving_vars=list()
-    #
-    #     non_embedding_weight_saving_vars.extend(dis_vars)
-    #     non_embedding_weight_saving_vars.extend(gen_enc_vals)
-    #     non_embedding_weight_saving_vars.extend(gen_dec_vals)
-    #     non_embedding_weight_saving_vars.extend(gen_ebdd_dictionary_vals)
-    #
-    #     all_saving_vars.extend(dis_vars)
-    #     all_saving_vars.extend(gen_enc_vals)
-    #     all_saving_vars.extend(gen_dec_vals)
-    #     all_saving_vars.extend(gen_ebdd_dictionary_vals)
-    #     all_saving_vars.extend(gen_ebdd_weights_vals)
-    #
-    #     return non_embedding_weight_saving_vars, all_saving_vars
+        return gen_vars_1, dis_vars_1, t_vars
 
     def retrieve_generator_vars(self):
         all_vars = tf.global_variables()
@@ -611,10 +571,9 @@ class UNet(object):
         model_id = "experiment_%s_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.running_mode)
         model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
         model_log_dir = os.path.join(self.log_dir, model_id)
-        model_check_validate_image_dir = os.path.join(self.check_validate_dir, model_id)
-        model_check_train_image_dir = os.path.join(self.check_train_dir, model_id)
+        model_sample_dir = os.path.join(self.sample_dir, model_id)
         model_weight_bar_dir = os.path.join(self.weight_bar_dir,model_id)
-        return model_id,model_ckpt_dir,model_log_dir,model_check_validate_image_dir,model_check_train_image_dir,model_weight_bar_dir
+        return model_id,model_ckpt_dir,model_log_dir,model_sample_dir,model_weight_bar_dir
 
     def checkpoint(self, saver):
         model_name = "unet.model"
@@ -646,36 +605,15 @@ class UNet(object):
 
         return fake_images, real_images, d_loss, g_loss, l1_loss
 
-
-    def check_train_model(self,batch_labels,batch_images,epoch,save_path_prefix):
-
-        #labels = self.dense_to_one_hot(batch_labels, self.font_num_for_train)
-        fake_imgs, real_imgs, d_loss, g_loss, l1_loss = self.generate_fake_samples(batch_images, batch_labels)
-
-        current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
-        print("Time:%s,CheckTrain:%.5f,g:%.5f,l1:%.5f" % (current_time, d_loss, g_loss, l1_loss))
-        sample_img_path = os.path.join(save_path_prefix, "check_train_%02d_%04d.png" % (epoch, self.counter))
-
-        merged_fake_images = merge(scale_back(fake_imgs), [self.batch_size, 1])
-        merged_real_images = merge(scale_back(real_imgs), [self.batch_size, 1])
-        merged_pair = np.concatenate([merged_real_images, merged_fake_images], axis=1)
-
-        misc.imsave(sample_img_path, merged_pair)
-
-        return merged_pair
-
-
-    def check_validate_model(self,val_iter, epoch,save_path_prefix):
-
-
+    def validate_model(self,val_iter, epoch):
+        #input_handle, _, _, summary_handle,_ = self.retrieve_handles()
         labels, images = next(val_iter)
         labels = self.dense_to_one_hot(labels, self.font_num_for_train)
         fake_imgs, real_imgs, d_loss, g_loss, l1_loss = self.generate_fake_samples(images, labels)
 
         current_time=time.strftime('%Y-%m-%d @ %H:%M:%S',time.localtime())
-        print("Time:%s,CheckValidate:%.5f,g:%.5f,l1:%.5f" % (current_time, d_loss, g_loss, l1_loss))
-        sample_img_path = os.path.join(save_path_prefix, "check_validate_%02d_%04d.png" % (epoch, self.counter))
-
+        print("Time:%s,Sample:%.5f,g:%.5f,l1:%.5f" % (current_time,d_loss, g_loss, l1_loss))
+        print(self.print_separater)
 
         merged_fake_images = merge(scale_back(fake_imgs), [self.batch_size, 1])
         merged_real_images = merge(scale_back(real_imgs), [self.batch_size, 1])
@@ -683,13 +621,12 @@ class UNet(object):
 
 
 
-
+        sample_img_path = os.path.join(self.sample_dir, "sample_%02d_%04d.png" % (epoch, self.counter))
         misc.imsave(sample_img_path, merged_pair)
 
 
 
         return merged_pair
-
 
 
 
@@ -809,20 +746,16 @@ class UNet(object):
 
 
     def train_procedures(self):
-        g_vars, d_vars, all_vars= self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
-                                                               freeze_decoder=self.freeze_decoder,
-                                                               freeze_discriminator=self.freeze_discriminator,
-                                                               freeze_ebdd_weights=self.freeze_ebdd_weights)
-
-
+        g_vars, d_vars, all_vars = self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
+                                                      freeze_decoder=self.freeze_decoder,
+                                                      freeze_discriminator=self.freeze_discriminator,
+                                                      freeze_ebdd_weights=self.freeze_ebdd_weights)
         input_handle, loss_handle, _, summary_handle,debug_handle = self.retrieve_handles()
 
         if not self.sess:
             raise Exception("no session registered")
 
         learning_rate = tf.placeholder(tf.float32, name="learning_rate")
-
-
 
 
         if self.optimization_method=='adam':
@@ -832,45 +765,46 @@ class UNet(object):
             d_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.d_loss, var_list=d_vars)
             g_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.g_loss, var_list=g_vars)
 
+
         tf.global_variables_initializer().run()
 
-
         # filter by one type of labels
+        if self.running_mode==0:
+            full_train_mark=True
+        else:
+            full_train_mark=False
         data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
-                                          filter_by=self.fine_tune,sub_train_set_num=self.sub_train_set_num)
+                                          filter_by=self.fine_tune,full_train_mark=full_train_mark,sub_train_set_num=self.sub_train_set_num)
         self.epoch = data_provider.get_total_epoch_num(self.itrs,self.batch_size)
 
         total_batches = data_provider.compute_total_batch_num(self.batch_size)
         val_batch_iter = data_provider.get_val_iter(self.batch_size)
 
-
-        saver = tf.train.Saver(max_to_keep=3, var_list=all_vars)
-
+        saver = tf.train.Saver(max_to_keep=1,var_list=all_vars)
 
 
-        # # restore model from previous fully trained one
-        if not self.running_mode==0:
+
+
+        # restore model from previous fully trained one
+        if self.running_mode==1 or self.running_mode == 2:
             self.restore_model(saver, self.base_trained_model_dir)
 
 
-        # restore model from previous trained one (identical running mode)
+        # restore model from previous trained one (identical mrunning mode)
         if self.resume_training==1:
             self.restore_model(saver, self.checkpoint_dir)
 
 
         summary_writer = tf.summary.FileWriter(self.log_dir, self.sess.graph)
+
         current_lr = self.lr
+
         start_time = time.time()
         print(self.print_separater)
         print(self.print_separater)
         print(self.print_separater)
-
-
         for ei in range(self.epoch):
             # this_itr_start=time.time()
-
-
-
             train_batch_iter = data_provider.get_train_iter(self.batch_size)
 
             if (ei + 1) % self.schedule == 0:
@@ -881,10 +815,6 @@ class UNet(object):
                 current_lr = update_lr
 
             for bid, batch in enumerate(train_batch_iter):
-                # if not self.running_mode == 0:
-                #     print(debug_handle.ebdd_weights_dynamic.eval()[:, 0])
-
-
                 self.counter += 1
 
                 this_itr_start=time.time()
@@ -927,13 +857,10 @@ class UNet(object):
                                            loss_handle.tv_loss,
                                            loss_handle.ebdd_weight_loss,
                                            summary_handle.g_merged],
-                                           feed_dict=self.feed_dictionary_generation_for_g(batch_images=batch_images,
-                                                                                           labels=labels,
-                                                                                           current_lr=current_lr,
-                                                                                           learning_rate=learning_rate))
-
-
-
+                                          feed_dict=self.feed_dictionary_generation_for_g(batch_images=batch_images,
+                                                                                          labels=labels,
+                                                                                          current_lr=current_lr,
+                                                                                          learning_rate=learning_rate))
 
 
 
@@ -951,11 +878,9 @@ class UNet(object):
                                     passed_full / 3600,passed_itr))
                 print(self.print_separater)
 
-                if self.counter % self.summary_steps ==0:
-
-                    summary_writer.add_summary(d_summary, self.counter)
-                    summary_writer.add_summary(g_summary, self.counter)
-                    summary_writer.flush()
+                summary_writer.add_summary(d_summary, self.counter)
+                summary_writer.add_summary(g_summary, self.counter)
+                summary_writer.flush()
 
 
 
@@ -963,37 +888,33 @@ class UNet(object):
 
                 if self.counter % self.sample_steps == 0:
                     # sample the current model states with val data
-
-
-
-                    # check for train set
-                    merged_pair_train = self.check_train_model(batch_images=batch_images, batch_labels=labels, epoch=ei,save_path_prefix=self.check_train_dir)
-                    summary_train_image = self.sess.run(summary_handle.check_train_image,feed_dict={input_handle.check_train_image: np.reshape(merged_pair_train, (1, merged_pair_train.shape[0], merged_pair_train.shape[1],merged_pair_train.shape[2]))})
-                    summary_writer.add_summary(summary_train_image, self.counter)
-
-
-
-
-
-
-                    # check for validation set
-                    merged_pair_validate = self.check_validate_model(val_iter=val_batch_iter, epoch=ei,save_path_prefix=self.check_validate_dir)
-                    summary_validate_image = self.sess.run(summary_handle.check_validate_image,feed_dict={input_handle.check_validate_image: np.reshape(merged_pair_validate, (1, merged_pair_validate.shape[0],merged_pair_validate.shape[1],merged_pair_validate.shape[2]))})
-                    summary_writer.add_summary(summary_validate_image, self.counter)
-
-
-
+                    merged_pair = self.validate_model(val_batch_iter, ei)
+                    summary_image = self.sess.run(summary_handle.valiadte_image_merged,feed_dict={
+                                                                                    input_handle.validate_image: np.reshape(merged_pair,
+                                                                                    (1, merged_pair.shape[0], merged_pair.shape[1], merged_pair.shape[2]))})
+                    summary_writer.add_summary(summary_image,self.counter)
+                    summary_writer.flush()
 
 
 
                     if self.freeze_ebdd_weights==0:
-                        weights_bar_img_path = self.weight_plot_and_save(weight_to_plot=debug_handle.ebdd_weights_dynamic.eval(),epoch=ei)
-                        weight_bar_img = self.png_read(weights_bar_img_path)
-                        weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,feed_dict={input_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
-                        summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
+                        weight_bar_path_org = self.weight_plot_and_save(prefix="org_",weight_to_plot=debug_handle.ebdd_weights_org.eval()[0, :], epoch=ei)
+                        weight_bar_org = self.png_read(weight_bar_path_org)
+                        weight_org_fig_out = self.sess.run(summary_handle.weight_org_fig, feed_dict={input_handle.weight_org_fig_placeholder: weight_bar_org})
+                        summary_writer.add_summary(weight_org_fig_out, self.counter)
 
-                    summary_writer.flush()
-                    print(self.print_separater)
+                        weight_bar_path_net = self.weight_plot_and_save(prefix="net_",weight_to_plot=debug_handle.ebdd_weights_net.eval()[0, :], epoch=ei)
+                        weight_bar_net = self.png_read(weight_bar_path_net)
+                        weight_net_fig_out = self.sess.run(summary_handle.weight_net_fig, feed_dict={input_handle.weight_net_fig_placeholder: weight_bar_net})
+                        summary_writer.add_summary(weight_net_fig_out, self.counter)
+
+                        weight_bar_path_loss = self.weight_plot_and_save(prefix="loss_",weight_to_plot=debug_handle.ebdd_weights_loss.eval()[0, :], epoch=ei)
+                        weight_bar_loss = self.png_read(weight_bar_path_loss)
+                        weight_loss_fig_out = self.sess.run(summary_handle.weight_loss_fig, feed_dict={input_handle.weight_loss_fig_placeholder: weight_bar_loss})
+                        summary_writer.add_summary(weight_loss_fig_out, self.counter)
+
+                        summary_writer.flush()
+
 
                 if self.counter % self.checkpoint_steps == 0:
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
@@ -1017,36 +938,14 @@ class UNet(object):
         return output_one_hot_label
 
 
-    def weight_plot_and_save(self,weight_to_plot,epoch):
-        plt.subplots(nrows=len(self.fine_tune),ncols=1,figsize=(12,9*len(self.fine_tune)),dpi=100)
+    def weight_plot_and_save(self,prefix,weight_to_plot,epoch):
+        y_pos=np.arange(len(weight_to_plot))
+        plt.figure(figsize=(12,9),dpi=100)
 
-        counter=0
-        for travelling_labels in self.fine_tune:
-            plt.subplot(len(self.fine_tune), 1, counter+1)
+        plt.bar(y_pos,weight_to_plot,align='center',alpha=0.5)
+        plt.xticks(y_pos)
 
-            y_pos = np.arange(len(weight_to_plot[travelling_labels, :]))
-
-            multiple_bars = plt.bar(y_pos, weight_to_plot[travelling_labels, :], align='center', alpha=0.5,yerr=0.001)
-            plt.xticks(y_pos)
-            plt.title('LabelNo%d' % travelling_labels)
-
-            max_value = np.max(np.abs(weight_to_plot[travelling_labels, :]))
-            bar_counter=0
-            for bar in multiple_bars:
-                height = bar.get_height()
-                if weight_to_plot[travelling_labels,bar_counter]>0:
-                    num_y_pos = height + max_value * 0.03
-                else:
-                    num_y_pos = -height -max_value * 0.15
-                plt.text(bar.get_x()+bar.get_width()/4.,num_y_pos, '%.4f' % float(weight_to_plot[travelling_labels,bar_counter]))
-                bar_counter=bar_counter+1
-
-            plt.show()
-            counter=counter+1
-
-
-        fig_save_path = os.path.join(self.weight_bar_dir, "weight_bar_%02d_%04d.png" % (epoch, self.counter))
-        print ("WeightBarSaved@%s"%fig_save_path)
+        fig_save_path = os.path.join(self.weight_bar_dir, prefix+"weight_bar_%02d_%04d.png" % (epoch, self.counter))
 
         plt.savefig(fig_save_path,format='png')
 
@@ -1080,8 +979,7 @@ class UNet(object):
         else:
             output_dict = {
                 real_data: batch_images,
-                learning_rate: current_lr,
-                ebdd_weights_static: labels,
+                learning_rate: current_lr
             }
 
         return output_dict
@@ -1101,8 +999,7 @@ class UNet(object):
             output_dict = {
                 real_data: batch_images,
                 learning_rate: current_lr,
-                targeted_label: labels,
-                ebdd_weights_static: labels
+                targeted_label: labels
             }
 
 

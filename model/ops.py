@@ -57,7 +57,7 @@ def init_embedding_dictionary(size, dimension, stddev=0.01, scope="generator"):
         return tf.get_variable("gen_ebdd_dictionary", [size, dimension], tf.float32,
                                tf.random_normal_initializer(stddev=stddev))
 
-def init_embedding_weights(size,stddev=0.01,scope="generator",name='tmp'):
+def init_embedding_weights(size,stddev=1,scope="generator",name='tmp'):
     with tf.variable_scope(scope):
 
         init_weight = tf.get_variable(name,size,tf.float32,
