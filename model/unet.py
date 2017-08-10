@@ -135,6 +135,11 @@ class UNet(object):
 
 
         self.fine_tune=fine_tune
+
+
+
+
+
         self.sub_train_set_num=sub_train_set_num
 
 
@@ -986,11 +991,11 @@ class UNet(object):
 
 
 
-                    if self.freeze_ebdd_weights==0:
-                        weights_bar_img_path = self.weight_plot_and_save(weight_to_plot=debug_handle.ebdd_weights_dynamic.eval(),epoch=ei)
-                        weight_bar_img = self.png_read(weights_bar_img_path)
-                        weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,feed_dict={input_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
-                        summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
+                    # if self.freeze_ebdd_weights==0:
+                    #     weights_bar_img_path = self.weight_plot_and_save(weight_to_plot=debug_handle.ebdd_weights_dynamic.eval(),epoch=ei)
+                    #     weight_bar_img = self.png_read(weights_bar_img_path)
+                    #     weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,feed_dict={input_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
+                    #     summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
 
                     summary_writer.flush()
                     print(self.print_separater)

@@ -8,15 +8,15 @@ import numpy as np
 
 from model.unet import UNet
 
-input_args = ['--running_mode','1',
+input_args = ['--running_mode','0',
               '--base_trained_model_dir', './experiment/base_model_0/',
 
-              '--experiment_id','0',
+              '--experiment_id','debug',
 
-              '--train_name','./experiment/font_binary_data/train_debug.obj',
-              '--val_name','./experiment/font_binary_data/train_debug.obj',
+              '--train_name','./train_debug.obj',
+              '--val_name','./train_debug.obj',
 
-              '--batch_size', '2',
+              '--batch_size', '5',
 
               '--resume_training','0',
 
@@ -24,15 +24,13 @@ input_args = ['--running_mode','1',
               '--checkpoint_steps','5',
               '--itrs','1000',
               '--schedule','10',
-              #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 
               '--font_num_for_train','5',
-              #'--fine_tune','0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
-              '--fine_tune','1,3,4',
-              '--sub_train_set_num','10',
+              '--fine_tune','All',
+              '--sub_train_set_num','20',
 
-              '--freeze_encoder','1',
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               ]
 
@@ -101,7 +99,7 @@ parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, req
 parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
                     help='specific labels id to be fine tuned')
 parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
-
+5
 
 parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
@@ -123,6 +121,14 @@ def main(_):
 
     with tf.Session(config=config) as sess:
 
+
+        if args.fine_tune=='All':
+            args.fine_tune=''
+            for ii in range(args.font_num_for_train):
+                if ii==0:
+                    args.fine_tune=args.fine_tune+str(ii)
+                else:
+                    args.fine_tune = args.fine_tune + ','+str(ii)
 
         ids = args.fine_tune.split(",")
         fine_tune_list = set([int(i) for i in ids])
@@ -152,7 +158,7 @@ def main(_):
 
 
                      resume_training=args.resume_training,
-                     freeze_encoder=args.freeze_encoder, freeze_decoder=args.freeze_decoder,
+                     freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
 
 
                      fine_tune=fine_tune_list,

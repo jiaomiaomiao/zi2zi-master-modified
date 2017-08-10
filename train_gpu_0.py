@@ -8,31 +8,31 @@ import numpy as np
 
 from model.unet import UNet
 
-input_args = ['--running_mode','1',
+input_args = ['--running_mode','0',
               '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
 
-              '--experiment_id','20_fonts_2000_each_encoder_freeze',
+              '--experiment_id','170_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
 
-              '--train_name','/dataA/harric/Chinese_Character_Generation/BaseModels/font_binary_data/train_full_train.obj',
-              '--val_name','/dataA/harric/Chinese_Character_Generation/BaseModels/font_binary_data/val_full_train.obj',
+              '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/train.obj',
+              '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/val.obj',
+              #'--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/train_full_train.obj',
+              #'--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/val_full_train.obj',
 
-              '--batch_size', '64',
+              '--batch_size', '60',
 
               '--resume_training','0',
 
-              '--sample_steps','25',
-              '--checkpoint_steps','100',
-              '--itrs','10000',
+              '--sample_steps','100',
+              '--checkpoint_steps','250',
+              '--itrs','250000',
               '--schedule','5',
-              #'--optimization_method','gradient_descent',
               '--optimization_method','adam',
 
-              '--font_num_for_train','20',
-              '--fine_tune','0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19',
-              #'--fine_tune','0,1,2',
-              '--sub_train_set_num','2000',
+              '--font_num_for_train','170',
+              '--fine_tune','All', #'All' or list all labels to be fine tuned
+              '--sub_train_set_num','3000',
 
-              '--freeze_encoder','1',
+              '--freeze_encoder','0',
               '--freeze_decoder','0',
               ]
 
@@ -101,7 +101,7 @@ parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, req
 parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
                     help='specific labels id to be fine tuned')
 parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
-
+5
 
 parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
@@ -123,6 +123,14 @@ def main(_):
 
     with tf.Session(config=config) as sess:
 
+
+        if args.fine_tune=='All':
+            args.fine_tune=''
+            for ii in range(args.font_num_for_train):
+                if ii==0:
+                    args.fine_tune=args.fine_tune+str(ii)
+                else:
+                    args.fine_tune = args.fine_tune + ','+str(ii)
 
         ids = args.fine_tune.split(",")
         fine_tune_list = set([int(i) for i in ids])
