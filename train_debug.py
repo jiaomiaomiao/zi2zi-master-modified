@@ -6,22 +6,25 @@ import tensorflow as tf
 import argparse
 import numpy as np
 
-from model.unet import UNet
+from model.unet_multi_gpus import UNet
+#from model.unet import UNet
+
 
 input_args = ['--running_mode','0',
-              '--base_trained_model_dir', './experiment/base_model_0/',
+              '--base_trained_model_dir', './experiment/checkpoint/experiment_debug_batch_3_mode_0/',
 
               '--experiment_id','debug',
 
               '--train_name','./train_debug.obj',
               '--val_name','./train_debug.obj',
 
-              '--batch_size', '5',
+              '--batch_size', '3',
 
               '--resume_training','0',
 
-              '--sample_steps','1',
-              '--checkpoint_steps','5',
+              '--sample_steps','9',
+              '--checkpoint_steps','13',
+              '--summary_steps','19',
               '--itrs','1000',
               '--schedule','10',
               '--optimization_method','adam',
@@ -89,6 +92,8 @@ parser.add_argument('--sample_steps', dest='sample_steps', type=int, required=Tr
                     help='number of batches in between two samples are drawn from validation set')
 parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, required=True,
                     help='number of batches in between two checkpoints')
+parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=True,
+                    help='number of batches in between two summaries')
 
 
 
@@ -116,57 +121,55 @@ parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=in
 
 
 def main(_):
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-
-    with tf.Session(config=config) as sess:
-
-
-        if args.fine_tune=='All':
-            args.fine_tune=''
-            for ii in range(args.font_num_for_train):
-                if ii==0:
-                    args.fine_tune=args.fine_tune+str(ii)
-                else:
-                    args.fine_tune = args.fine_tune + ','+str(ii)
-
-        ids = args.fine_tune.split(",")
-        fine_tune_list = set([int(i) for i in ids])
+    # config = tf.ConfigProto()
+    # config.gpu_options.allow_growth = True
+    #
+    # with tf.Session(config=config) as sess:
 
 
+    if args.fine_tune=='All':
+        args.fine_tune=''
+        for ii in range(args.font_num_for_train):
+            if ii==0:
+                args.fine_tune=args.fine_tune+str(ii)
+            else:
+                args.fine_tune = args.fine_tune + ','+str(ii)
 
-        model = UNet(running_mode=args.running_mode,
-                     base_trained_model_dir=args.base_trained_model_dir,
-                     experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
-                     train_obj_name=args.train_name, val_obj_name=args.val_name,
-
-                     sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,
-                     optimization_method=args.optimization_method,
-
-                     batch_size=args.batch_size,lr=args.lr,itrs=args.itrs,schedule=args.schedule,
-
-                     ebdd_dictionary_dim=args.ebdd_dictionary_dim,
-
-                     L1_penalty=args.L1_penalty,
-                     Lconst_penalty=args.Lconst_penalty,
-                     Ltv_penalty=args.Ltv_penalty,
-                     ebdd_weight_penalty=args.ebdd_weight_penalty,
+    ids = args.fine_tune.split(",")
+    fine_tune_list = set([int(i) for i in ids])
 
 
 
-                     font_num_for_train=args.font_num_for_train,
+    model = UNet(running_mode=args.running_mode,
+                 base_trained_model_dir=args.base_trained_model_dir,
+                 experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
+                 train_obj_name=args.train_name, val_obj_name=args.val_name,
+
+                 sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,summary_steps=args.summary_steps,
+                 optimization_method=args.optimization_method,
+
+                 batch_size=args.batch_size,lr=args.lr,itrs=args.itrs,schedule=args.schedule,
+
+                 ebdd_dictionary_dim=args.ebdd_dictionary_dim,
+
+                 L1_penalty=args.L1_penalty,
+                 Lconst_penalty=args.Lconst_penalty,
+                 ebdd_weight_penalty=args.ebdd_weight_penalty,
 
 
-                     resume_training=args.resume_training,
-                     freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
+                 font_num_for_train=args.font_num_for_train,
 
 
-                     fine_tune=fine_tune_list,
-                     sub_train_set_num=args.sub_train_set_num)
-        model.register_session(sess)
-        model.build_model()
+                 resume_training=args.resume_training,
+                 freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
 
-        model.train_procedures()
+
+                 fine_tune=fine_tune_list,
+                 sub_train_set_num=args.sub_train_set_num)
+        #model.register_session(sess)
+        #model.build_model()
+
+    model.train_procedures()
 
 
 #input_args = []

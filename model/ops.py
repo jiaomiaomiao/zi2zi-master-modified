@@ -12,6 +12,9 @@ def batch_norm(x, is_training, epsilon=1e-5, decay=0.9, scope="batch_norm"):
 def conv2d(x, output_filters, kh=5, kw=5, sh=2, sw=2, stddev=0.02, scope="conv2d"):
     with tf.variable_scope(scope):
         shape = x.get_shape().as_list()
+
+
+
         W = tf.get_variable('W', [kh, kw, shape[-1], output_filters],
                             initializer=tf.truncated_normal_initializer(stddev=stddev))
         Wconv = tf.nn.conv2d(x, W, strides=[1, sh, sw, 1], padding='SAME')

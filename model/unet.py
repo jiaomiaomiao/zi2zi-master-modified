@@ -814,6 +814,10 @@ class UNet(object):
 
 
     def train_procedures(self):
+
+        self.build_model(self)
+
+
         g_vars, d_vars, all_vars= self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
                                                                freeze_decoder=self.freeze_decoder,
                                                                freeze_discriminator=self.freeze_discriminator,
@@ -822,8 +826,8 @@ class UNet(object):
 
         input_handle, loss_handle, _, summary_handle,debug_handle = self.retrieve_handles()
 
-        if not self.sess:
-            raise Exception("no session registered")
+        # if not self.sess:
+        #     raise Exception("no session registered")
 
         learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
@@ -837,7 +841,7 @@ class UNet(object):
             d_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.d_loss, var_list=d_vars)
             g_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.g_loss, var_list=g_vars)
 
-        tf.global_variables_initializer().run()
+        init=tf.global_variables_initializer()
 
 
         # filter by one type of labels
@@ -863,6 +867,10 @@ class UNet(object):
             self.restore_model(saver, self.checkpoint_dir)
 
 
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        self.sess = tf.Session(config=config)
+        self.sess.run(init)
         summary_writer = tf.summary.FileWriter(self.log_dir, self.sess.graph)
         current_lr = self.lr
         start_time = time.time()
@@ -991,11 +999,11 @@ class UNet(object):
 
 
 
-                    # if self.freeze_ebdd_weights==0:
-                    #     weights_bar_img_path = self.weight_plot_and_save(weight_to_plot=debug_handle.ebdd_weights_dynamic.eval(),epoch=ei)
-                    #     weight_bar_img = self.png_read(weights_bar_img_path)
-                    #     weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,feed_dict={input_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
-                    #     summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
+                    if self.freeze_ebdd_weights==0:
+                        weights_bar_img_path = self.weight_plot_and_save(weight_to_plot=debug_handle.ebdd_weights_dynamic.eval(),epoch=ei)
+                        weight_bar_img = self.png_read(weights_bar_img_path)
+                        weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,feed_dict={input_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
+                        summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
 
                     summary_writer.flush()
                     print(self.print_separater)

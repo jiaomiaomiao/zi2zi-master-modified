@@ -6,29 +6,32 @@ import tensorflow as tf
 import argparse
 import numpy as np
 
-from model.unet import UNet
+# from model.unet import UNet
+from model.unet_multi_gpus import UNet
+
 
 input_args = ['--running_mode','0',
               '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
 
-              '--experiment_id','170_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
+              '--experiment_id','20_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
 
-              '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/train.obj',
-              '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/val.obj',
-              #'--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/train_full_train.obj',
-              #'--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/val_full_train.obj',
+              # '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/train.obj',
+              # '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/val.obj',
+              '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/train_full_train.obj',
+              '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/val_full_train.obj',
 
-              '--batch_size', '60',
+              '--batch_size', '64',
 
               '--resume_training','0',
 
-              '--sample_steps','100',
-              '--checkpoint_steps','250',
-              '--itrs','250000',
-              '--schedule','5',
+              '--sample_steps','35',
+              '--checkpoint_steps','80',
+              '--summary_steps','3',
+              '--itrs','9000',
+              '--schedule','20',
               '--optimization_method','adam',
 
-              '--font_num_for_train','170',
+              '--font_num_for_train','20',
               '--fine_tune','All', #'All' or list all labels to be fine tuned
               '--sub_train_set_num','3000',
 
@@ -91,6 +94,8 @@ parser.add_argument('--sample_steps', dest='sample_steps', type=int, required=Tr
                     help='number of batches in between two samples are drawn from validation set')
 parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, required=True,
                     help='number of batches in between two checkpoints')
+parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=True,
+                    help='number of batches in between two summaries')
 
 
 
@@ -118,57 +123,47 @@ parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=in
 
 
 def main(_):
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
+    if args.fine_tune == 'All':
+        args.fine_tune = ''
+        for ii in range(args.font_num_for_train):
+            if ii == 0:
+                args.fine_tune = args.fine_tune + str(ii)
+            else:
+                args.fine_tune = args.fine_tune + ',' + str(ii)
 
-    with tf.Session(config=config) as sess:
+    ids = args.fine_tune.split(",")
+    fine_tune_list = set([int(i) for i in ids])
 
+    model = UNet(running_mode=args.running_mode,
+                 base_trained_model_dir=args.base_trained_model_dir,
+                 experiment_dir=args.experiment_dir, experiment_id=args.experiment_id,
+                 train_obj_name=args.train_name, val_obj_name=args.val_name,
 
-        if args.fine_tune=='All':
-            args.fine_tune=''
-            for ii in range(args.font_num_for_train):
-                if ii==0:
-                    args.fine_tune=args.fine_tune+str(ii)
-                else:
-                    args.fine_tune = args.fine_tune + ','+str(ii)
+                 sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,summary_steps=args.summary_steps,
+                 optimization_method=args.optimization_method,
 
-        ids = args.fine_tune.split(",")
-        fine_tune_list = set([int(i) for i in ids])
+                 batch_size=args.batch_size, lr=args.lr, itrs=args.itrs, schedule=args.schedule,
 
+                 ebdd_dictionary_dim=args.ebdd_dictionary_dim,
 
+                 L1_penalty=args.L1_penalty,
+                 Lconst_penalty=args.Lconst_penalty,
+                 ebdd_weight_penalty=args.ebdd_weight_penalty,
 
-        model = UNet(running_mode=args.running_mode,
-                     base_trained_model_dir=args.base_trained_model_dir,
-                     experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
-                     train_obj_name=args.train_name, val_obj_name=args.val_name,
+                 font_num_for_train=args.font_num_for_train,
 
-                     sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,
-                     optimization_method=args.optimization_method,
+                 resume_training=args.resume_training,
+                 freeze_encoder=args.freeze_encoder, freeze_decoder=args.freeze_decoder,
 
-                     batch_size=args.batch_size,lr=args.lr,itrs=args.itrs,schedule=args.schedule,
+                 fine_tune=fine_tune_list,
+                 sub_train_set_num=args.sub_train_set_num)
+    # model.register_session(sess)
+    # model.build_model()
 
-                     ebdd_dictionary_dim=args.ebdd_dictionary_dim,
-
-                     L1_penalty=args.L1_penalty,
-                     Lconst_penalty=args.Lconst_penalty,
-                     Ltv_penalty=args.Ltv_penalty,
-                     ebdd_weight_penalty=args.ebdd_weight_penalty,
-
-
-
-                     font_num_for_train=args.font_num_for_train,
-
-
-                     resume_training=args.resume_training,
-                     freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
+    model.train_procedures()
 
 
-                     fine_tune=fine_tune_list,
-                     sub_train_set_num=args.sub_train_set_num)
-        model.register_session(sess)
-        model.build_model()
 
-        model.train_procedures()
 
 
 #input_args = []
