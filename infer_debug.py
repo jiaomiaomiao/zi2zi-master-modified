@@ -16,14 +16,13 @@ from model.unet import UNet
 #from model.unet import UNet
 
 
-input_args = ['--training_mode','2',
-              '--base_trained_model_dir', '/data/Harric/Chinese_Character_Generation/New_Font_Generation/experiment_3_hw_fonts_mode_2/checkpoint/',
-              '--infer_copy_num','5',
+input_args = ['--training_mode','0',
+              '--base_trained_model_dir', './',
+              '--infer_copy_num','2',
 
-              '--inferred_result_saving_path','/home/harric/Desktop/Infer_HW/',
+              '--inferred_result_saving_path','../test_infer/',
 
-              '--infer_name','/data/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_HW_1/essay_simplified.obj',
-              #'--infer_name','./train_debug.obj',
+              '--infer_name','../Font_ttf_otf/Obj/essay_simplified.obj',
 
 
 
@@ -119,10 +118,10 @@ def main(_):
         print ("No available GPU found!!! The calculation will be performed with CPU only.")
         args.device_mode=0
 
-    # parameter_update_device = avalialbe_cpu[0]
-    # forward_backward_device.append(avalialbe_cpu[0])
-    parameter_update_device = available_gpu[0]
-    forward_backward_device.append(available_gpu[0])
+    parameter_update_device = avalialbe_cpu[0]
+    forward_backward_device.append(avalialbe_cpu[0])
+    # parameter_update_device = available_gpu[0]
+    # forward_backward_device.append(available_gpu[0])
 
     forward_backward_device_list=list()
     forward_backward_device_list.extend(forward_backward_device)
@@ -184,23 +183,30 @@ def main(_):
 
 
     for ii in range(len(base_models_with_path)):
-        current_inferred_result_saving_path=os.path.join(args.inferred_result_saving_path,base_models[ii])
-        not_freeze_encoder=current_inferred_result_saving_path.find('encoder_not_freeze')
-        not_freeze_decoder=current_inferred_result_saving_path.find('decoder_not_freeze')
-        if args.training_mode == 0:
-            freeze_ebdd_weights = 1
-            freeze_encoder = 0
-            freeze_decoder = 0
-        else:
-            freeze_ebdd_weights = 0
-            if not not_freeze_encoder==-1:
-                freeze_encoder = 1
-            else:
-                freeze_encoder = 0
-            if not not_freeze_decoder==-1:
-                freeze_decoder=1
-            else:
-                freeze_decoder=0
+        # current_inferred_result_saving_path=os.path.join(args.inferred_result_saving_path,base_models[ii])
+        # not_freeze_encoder=current_inferred_result_saving_path.find('encoder_not_freeze')
+        # not_freeze_decoder=current_inferred_result_saving_path.find('decoder_not_freeze')
+        # if args.training_mode == 0:
+        #     freeze_ebdd_weights = 1
+        #     freeze_encoder = 0
+        #     freeze_decoder = 0
+        # else:
+        #     freeze_ebdd_weights = 0
+        #     if not not_freeze_encoder==-1:
+        #         freeze_encoder = 1
+        #     else:
+        #         freeze_encoder = 0
+        #     if not not_freeze_decoder==-1:
+        #         freeze_decoder=1
+        #     else:
+        #         freeze_decoder=0
+
+
+
+        current_inferred_result_saving_path = os.path.join(args.inferred_result_saving_path, base_models[ii])
+        freeze_ebdd_weights = 1
+        freeze_encoder = 0
+        freeze_decoder = 0
 
 
 
@@ -210,8 +216,8 @@ def main(_):
         print("New inferred dir created for %s." % (current_inferred_result_saving_path))
 
 
-        model_for_train.infer_procedures(inferred_result_saving_path=current_inferred_result_saving_path,
-                                         base_trained_model_dir = base_models_with_path[ii],
+        model_for_train.infer_procedures(inferred_result_saving_path='../test_infer',
+                                         base_trained_model_dir='../test_infer',
                                          freeze_ebdd_weights=freeze_ebdd_weights,
                                          freeze_encoder=freeze_encoder,
                                          freeze_decoder=freeze_decoder)

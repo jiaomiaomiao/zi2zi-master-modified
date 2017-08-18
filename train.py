@@ -3,14 +3,15 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 import tensorflow as tf
+from tensorflow.python.client import device_lib
 import argparse
 import numpy as np
 
 # from model.unet import UNet
-from model.unet_multi_gpus import UNet
+from model.unet import UNet
 
 
-input_args = ['--running_mode','0',
+input_args = ['--training_mode','0',
               '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
 
               '--experiment_id','20_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
@@ -27,8 +28,8 @@ input_args = ['--running_mode','0',
               '--sample_steps','35',
               '--checkpoint_steps','80',
               '--summary_steps','3',
-              '--itrs','9000',
-              '--schedule','20',
+              '--itrs','7500',
+              '--schedule','3',
               '--optimization_method','adam',
 
               '--font_num_for_train','20',
@@ -37,16 +38,25 @@ input_args = ['--running_mode','0',
 
               '--freeze_encoder','0',
               '--freeze_decoder','0',
+
+
+              '--device_mode','2'
               ]
+# device_mode=0: training only on cpu
+# device_mode=1: forward & backward on multiple gpus && parameter update on cpu
+# device_mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
+# device_mode=3: forward & backward & parameter update on a single gpu
 
 
 parser = argparse.ArgumentParser(description='Train')
+
 
 # mode setting
 # 0 --> full train
 # 1`--> fine_tune_trained
 # 2 --> fine_tune_untrained
-parser.add_argument('--running_mode', dest='running_mode',type=int,required=True)
+parser.add_argument('--training_mode', dest='training_mode',type=int,required=True)
+
 
 # directories setting
 
@@ -106,7 +116,7 @@ parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=
 parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
                     help='specific labels id to be fine tuned')
 parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
-5
+
 
 parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
@@ -118,11 +128,55 @@ parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=in
                     help="freeze ebdd weights during training")
 
 
+# device selection
+parser.add_argument('--device_mode', dest='device_mode',type=int,required=True,
+                    help='Device mode selection')
+# mode=0: training only on cpu
+# mode=1: forward & backward on multiple gpus && parameter update on cpu
+# mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
+# mode=3: forward & backward & parameter update on a single gpu
 
+def get_available_gpus():
+    local_device_protos = device_lib.list_local_devices()
+    cpu_device=[x.name for x in local_device_protos if x.device_type == 'CPU']
+    gpu_device=[x.name for x in local_device_protos if x.device_type == 'GPU']
+    print("Available CPU:%s with number:%d" % (cpu_device, len(cpu_device)))
+    print("Available GPU:%s with number:%d" % (gpu_device, len(gpu_device)))
+    return cpu_device, gpu_device,len(cpu_device),len(gpu_device)
 
 
 
 def main(_):
+    avalialbe_cpu, available_gpu, available_cpu_num, available_gpu_num = get_available_gpus()
+    forward_backward_device = list()
+    if available_gpu_num == 0:
+        print("No available GPU found!!! The calculation will be performed with CPU only.")
+        args.device_mode = 0
+
+    if args.device_mode==0:
+        parameter_update_device=avalialbe_cpu[0]
+        forward_backward_device.append(avalialbe_cpu[0])
+    elif args.device_mode==1:
+        parameter_update_device = avalialbe_cpu[0]
+        forward_backward_device.extend(available_gpu)
+    elif args.device_mode==2:
+        parameter_update_device=available_gpu[1]
+        forward_backward_device.append(available_gpu[0])
+        forward_backward_device.append(available_gpu[1])
+        forward_backward_device.append(available_gpu[2])
+    elif args.device_mode==3:
+        parameter_update_device = available_gpu[0]
+        forward_backward_device.append(available_gpu[0])
+
+    forward_backward_device_list=list()
+    forward_backward_device_list.extend(forward_backward_device)
+    print("Available devices for forward && backward:")
+    for device in forward_backward_device_list:
+        print(device)
+    print("Available devices for parameter update:%s" % parameter_update_device)
+
+
+
     if args.fine_tune == 'All':
         args.fine_tune = ''
         for ii in range(args.font_num_for_train):
@@ -134,7 +188,9 @@ def main(_):
     ids = args.fine_tune.split(",")
     fine_tune_list = set([int(i) for i in ids])
 
-    model = UNet(running_mode=args.running_mode,
+
+
+    model = UNet(training_mode=args.training_mode,
                  base_trained_model_dir=args.base_trained_model_dir,
                  experiment_dir=args.experiment_dir, experiment_id=args.experiment_id,
                  train_obj_name=args.train_name, val_obj_name=args.val_name,
@@ -156,7 +212,11 @@ def main(_):
                  freeze_encoder=args.freeze_encoder, freeze_decoder=args.freeze_decoder,
 
                  fine_tune=fine_tune_list,
-                 sub_train_set_num=args.sub_train_set_num)
+                 sub_train_set_num=args.sub_train_set_num,
+
+                 parameter_update_device=parameter_update_device,
+                 forward_backward_device=forward_backward_device_list
+                 )
     # model.register_session(sess)
     # model.build_model()
 
