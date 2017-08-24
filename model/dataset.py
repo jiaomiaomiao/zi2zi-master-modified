@@ -82,19 +82,20 @@ class TrainDataProvider(object):
     def __init__(self,
                  data_dir='./',
                  train_name="train.obj", val_name="val.obj", infer_name="infer.obj",
-                 filter_by=None, sub_train_set_num=-1,
+                 sub_train_set_num=-1,
                  infer_mark=False):
         self.data_dir = data_dir
-        self.filter_by = filter_by
         if not infer_mark:
 
             self.train = PickledImageProvider(train_name, train_mark=True)
             self.val = PickledImageProvider(val_name, train_mark=False)
 
-            if self.filter_by:
-                print("filter by label ->", filter_by)
-                self.train.examples = filter(lambda e: e[0] in self.filter_by, self.train.examples)
-                self.val.examples = filter(lambda e: e[0] in self.filter_by, self.val.examples)
+            self.train_label_vec=self.get_label_vec(train_mark=True)
+
+            # if self.filter_by:
+            #     print("filter by label ->", filter_by)
+            #     self.train.examples = filter(lambda e: e[0] in self.filter_by, self.train.examples)
+            #     self.val.examples = filter(lambda e: e[0] in self.filter_by, self.val.examples)
 
             if not sub_train_set_num == -1:
                 def diff(first, second):
@@ -103,7 +104,7 @@ class TrainDataProvider(object):
 
                 print("sub training set: @ %d for each label are trained" % (sub_train_set_num))
                 full_indices = range(len(self.train.examples))
-                selected_indices = random.sample(full_indices, sub_train_set_num * len(self.filter_by))
+                selected_indices = random.sample(full_indices, sub_train_set_num * len(self.train_label_vec))
                 non_selected_indices = diff(full_indices, selected_indices)
 
                 new_train_examples = list()
@@ -120,9 +121,7 @@ class TrainDataProvider(object):
             len(self.train.examples), len(self.val.examples)))
         else:
             self.infer = PickledImageProvider(infer_name, train_mark=False)
-            if self.filter_by:
-                print("filter by label ->", filter_by)
-                self.infer.examples = filter(lambda e: e[0] in self.filter_by, self.infer.examples)
+            self.train_label_vec = self.get_label_vec(train_mark=False)
             print("in total infer examples -> %d" % (len(self.infer.examples)))
 
 
@@ -135,12 +134,33 @@ class TrainDataProvider(object):
         print ("Epoch Num:%d, Itr Num:%d" % (epoch_num, itr_num) )
         return epoch_num
 
+    def get_label_vec(self,train_mark=True):
+        label_vec=list()
+        counter=0
+        if train_mark:
+            batch_iter = self.get_train_iter(batch_size=1, shuffle=False)
+        else:
+            batch_iter = self.get_infer_iter(batch_size=1, shuffle=False)
+        for bid, batch in enumerate(batch_iter):
+            counter+=1
+            label,batch_images = batch
+            if not label in label_vec:
+                label_vec.append(label)
+            #print(counter)
+        label_vec=np.asarray(label_vec).reshape(len(label_vec))
+        label_vec=np.asarray(sorted(label_vec)).reshape(len(label_vec))
+
+        return label_vec.tolist()
+
+
 
     def get_train_iter(self, batch_size, shuffle=True):
         training_examples = self.train.examples[:]
         if shuffle:
             np.random.shuffle(training_examples)
         return get_batch_iter(training_examples, batch_size, augment=True)
+
+
 
     def get_val_iter(self, batch_size, shuffle=True):
         """
@@ -163,8 +183,10 @@ class TrainDataProvider(object):
             np.random.shuffle(infer_examples)
         while True:
             infer_batch_iter = get_batch_iter(infer_examples, batch_size, augment=False)
-            for labels, examples in infer_batch_iter:
-                yield labels, examples
+            # for labels, examples in infer_batch_iter:
+            #     yield labels, examples
+
+            return infer_batch_iter
 
     def compute_total_batch_num(self, batch_size,tower_num):
         """Total padded batch num"""

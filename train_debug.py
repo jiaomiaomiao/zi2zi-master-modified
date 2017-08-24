@@ -6,33 +6,32 @@ import tensorflow as tf
 from tensorflow.python.client import device_lib
 
 import argparse
-import numpy as np
 
 from model.unet import UNet
-#from model.unet import UNet
 
 
-input_args = ['--training_mode','0',
-              '--base_trained_model_dir', './experiment/checkpoint/experiment_debug_batch_3_mode_0/',
+input_args = ['--training_mode','2',
+              '--base_trained_model_dir', '../Bases/experiment_debug_batch_7_mode_0',
 
               '--experiment_id','debug',
 
-              '--train_name','./train_debug.obj',
-              '--val_name','./train_debug.obj',
+              # '--train_name','./train_debug.obj',
+              # '--val_name','./train_debug.obj',
+              '--train_name','../Bases/essay_simplified.obj',
+              '--val_name','../Bases/essay_simplified.obj',
 
-              '--batch_size', '3',
+              '--batch_size', '7',
 
-              '--resume_training','0',
+              '--resume_training','1',
 
-              '--sample_steps','9',
-              '--checkpoint_steps','13',
-              '--summary_steps','19',
+              '--sample_steps','1',
+              '--checkpoint_steps','1',
+              '--summary_steps','1',
               '--itrs','1000',
               '--schedule','5',
               '--optimization_method','adam',
 
-              '--font_num_for_train','5',
-              '--fine_tune','All',
+              '--base_training_font_num','5',
               '--sub_train_set_num','20',
 
               '--freeze_encoder','0',
@@ -62,8 +61,6 @@ parser.add_argument('--experiment_id', dest='experiment_id', type=str,
 
 
 # input data setting
-# parser.add_argument('--train_name',dest='train_name',type=str,default='train.obj')
-# parser.add_argument('--val_name',dest='val_name',type=str,default='val.obj')
 parser.add_argument('--train_name',dest='train_name',type=str,required=True)
 parser.add_argument('--val_name',dest='val_name',type=str,required=True)
 
@@ -76,8 +73,8 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, required=True,
-                    help="number for distinct fonts for train")
+parser.add_argument('--base_training_font_num', dest='base_training_font_num', type=int, required=True,
+                    help="number for distinct base fonts for train with mode 0")
 parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
                     help="dimension for ebdd dictionary")
 
@@ -106,8 +103,6 @@ parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=
 
 
 # specific training scheme setting
-parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
-                    help='specific labels id to be fine tuned')
 parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
 
 
@@ -144,10 +139,6 @@ def get_available_gpus():
 
 
 def main(_):
-    # config = tf.ConfigProto()
-    # config.gpu_options.allow_growth = True
-    #
-    # with tf.Session(config=config) as sess:
 
 
     avalialbe_cpu, available_gpu,available_cpu_num, available_gpu_num = get_available_gpus()
@@ -179,18 +170,6 @@ def main(_):
     print("Available devices for parameter update:%s" % parameter_update_device)
 
 
-    if args.fine_tune=='All':
-        args.fine_tune=''
-        for ii in range(args.font_num_for_train):
-            if ii==0:
-                args.fine_tune=args.fine_tune+str(ii)
-            else:
-                args.fine_tune = args.fine_tune + ','+str(ii)
-
-    ids = args.fine_tune.split(",")
-    fine_tune_list = set([int(i) for i in ids])
-
-
 
 
 
@@ -211,14 +190,12 @@ def main(_):
                            ebdd_weight_penalty=args.ebdd_weight_penalty,
 
 
-                           font_num_for_train=args.font_num_for_train,
-
+                           base_training_font_num=args.base_training_font_num,
 
                            resume_training=args.resume_training,
 
                            freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
 
-                           fine_tune=fine_tune_list,
                            sub_train_set_num=args.sub_train_set_num,
 
                            parameter_update_device=parameter_update_device,

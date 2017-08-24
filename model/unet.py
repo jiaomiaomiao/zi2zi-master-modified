@@ -28,15 +28,15 @@ LossHandle = namedtuple("LossHandle", ["d_loss", "g_loss",
                                        "const_loss", "l1_loss", "ebdd_weight_loss",
                                        "category_loss", "real_category_loss", "fake_category_loss",
                                        "cheat_loss",])
-InputHandle = namedtuple("InputHandle", ["real_data", "ebdd_weights_static","targeted_label"])
+InputHandle = namedtuple("InputHandle", ["real_data", "input_one_hot_label_container","targeted_label"])
 EvalHandle = namedtuple("EvalHandle", ["encoder","generator", "target", "source", "ebdd_dictionary",
-                                       "real_data","ebdd_weights_static"])
+                                       "real_data","input_one_hot_label_container"])
 
 SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged",
                                              "check_validate_image_summary","check_train_image_summary",
                                              "check_validate_image","check_train_image",
-                                             "ebdd_weights_dynamic_bar","ebdd_weight_dynamic_checker_final",
-                                             "ebdd_weights_dynamic_bar_placeholder"])
+                                             "ebdd_weights_house_bar","ebdd_weight_dynamic_checker_final",
+                                             "ebdd_weights_house_bar_placeholder"])
 
 
 lossHandleList=[]
@@ -63,13 +63,12 @@ class UNet(object):
 
                  L1_penalty=100, Lconst_penalty=15,ebdd_weight_penalty=1.0,
 
-                 font_num_for_train=20,
+                 base_training_font_num=20,
 
                  resume_training=True,
 
                  freeze_encoder=False, freeze_decoder=False,
 
-                 fine_tune=None,
                  sub_train_set_num=-1,
 
                  parameter_update_device='/cpu:0',
@@ -149,15 +148,13 @@ class UNet(object):
         self.ebdd_weight_penalty = ebdd_weight_penalty
 
 
-        self.font_num_for_train = font_num_for_train
-        self.font_num_for_fine_tune_max = font_num_for_train
-        # self.font_num_for_fine_tune_max = 1
+        self.base_training_font_num = base_training_font_num
+        self.max_transfer_font_num = base_training_font_num*2
 
         self.resume_training = resume_training
 
 
 
-        self.fine_tune=fine_tune
 
 
 
@@ -314,7 +311,7 @@ class UNet(object):
             fc1 = fc(tf.reshape(h3, [self.batch_size, -1]), 1, scope="dis_fc1",
                      parameter_update_device=self.parameter_update_device)
             # category loss
-            fc2 = fc(tf.reshape(h3, [self.batch_size, -1]), self.font_num_for_train, scope="dis_fc2",
+            fc2 = fc(tf.reshape(h3, [self.batch_size, -1]), self.base_training_font_num, scope="dis_fc2",
                      parameter_update_device=self.parameter_update_device)
 
             return tf.nn.sigmoid(fc1), fc1, fc2
@@ -322,23 +319,58 @@ class UNet(object):
     def multi_embedding_weights_init(self):
 
 
-        ebdd_weights_static = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="gen_ebdd_weights_static")
-        ebdd_weights_dynamic = init_embedding_weights(size=[self.font_num_for_fine_tune_max, self.font_num_for_train],
-                                                      name="gen_ebdd_weights_dynamic",
+        input_one_hot_label_container = tf.placeholder(tf.float32,
+                                             shape=(self.batch_size, self.font_num_for_train),
+                                             name="gen_input_one_hot_label_container")
+        ebdd_weights_house = init_embedding_weights(size=[self.font_num_for_fine_tune_max, self.font_num_for_train],
+                                                      name="gen_ebdd_weights_house",
                                                       parameter_update_device=self.parameter_update_device)
 
         if self.freeze_ebdd_weights == True:
-            ebdd_weights_org = ebdd_weights_static
+            ebdd_weights_org = input_one_hot_label_container
             ebdd_weights_batch_normed = weight_norm(ebdd_weights_org)
             ebdd_weights_for_net = ebdd_weights_batch_normed
             ebdd_weights_for_loss = ebdd_weights_batch_normed
         else:
-            static_label_non_one_hot=tf.argmax(ebdd_weights_static,axis=1)
-            ebdd_weights_org=tf.nn.embedding_lookup(ebdd_weights_dynamic,ids=static_label_non_one_hot)
+            static_label_non_one_hot=tf.argmax(input_one_hot_label_container,axis=1)
+            ebdd_weights_org=tf.nn.embedding_lookup(ebdd_weights_house,ids=static_label_non_one_hot)
             ebdd_weights_for_loss = tf.nn.softmax(ebdd_weights_org)
             ebdd_weights_for_net = weight_norm(ebdd_weights_org)
 
-        return ebdd_weights_static,ebdd_weights_dynamic,ebdd_weights_org,ebdd_weights_for_net,ebdd_weights_for_loss
+        return input_one_hot_label_container,ebdd_weights_house,ebdd_weights_org,ebdd_weights_for_net,ebdd_weights_for_loss
+
+
+    def embedder_for_base_training(self):
+        # input_one_hot_label_container = tf.placeholder(tf.float32, shape=(self.batch_size, len(self.involved_font_list)),
+        #                                                name="gen_input_one_hot_label_container")
+        input_one_hot_label_container = tf.placeholder(tf.float32, shape=(self.batch_size, len(self.involved_font_list)))
+            
+
+        ebdd_weights_house = init_embedding_weights(size=[self.max_transfer_font_num, self.base_training_font_num],
+                                                    name="gen_ebdd_weights_house",
+                                                    parameter_update_device=self.parameter_update_device)
+
+        if self.freeze_ebdd_weights==True:
+            ebdd_weights_org = input_one_hot_label_container
+            # ebdd_weights_org = tf.slice(input_one_hot_label_container,
+            #                             [0,0],
+            #                             [self.batch_size,self.base_training_font_num])
+            ebdd_weights_batch_normed = weight_norm(ebdd_weights_org)
+            ebdd_weights_for_net = ebdd_weights_batch_normed
+            ebdd_weights_for_loss = ebdd_weights_batch_normed
+        else:
+            static_label_non_one_hot = tf.argmax(input_one_hot_label_container, axis=1)
+            ebdd_weights_org = tf.nn.embedding_lookup(ebdd_weights_house, ids=static_label_non_one_hot)
+            ebdd_weights_for_loss = tf.nn.softmax(ebdd_weights_org)
+            ebdd_weights_for_net = weight_norm(ebdd_weights_org)
+
+        ebdd_dictionary = init_embedding_dictionary(size=self.base_training_font_num, dimension=self.ebdd_dictionary_dim,
+                                                    parameter_update_device=self.parameter_update_device)
+
+        ebdd_vector = tf.matmul(ebdd_weights_for_net, ebdd_dictionary)
+        ebdd_vector = tf.reshape(ebdd_vector, [self.batch_size, 1, 1, self.ebdd_dictionary_dim])
+
+        return input_one_hot_label_container, ebdd_weights_house,ebdd_weights_org, ebdd_weights_for_net, ebdd_weights_for_loss,ebdd_dictionary,ebdd_vector
 
 
 
@@ -356,33 +388,18 @@ class UNet(object):
                                    name='real_A_and_B_images')
 
 
-
-
-
-        ebdd_weights_static, \
-        ebdd_weights_dynamic, \
+        # embedding network
+        input_one_hot_label_container, \
+        ebdd_weights_house,\
         ebdd_weights_org, \
         ebdd_weights_for_net, \
-        ebdd_weights_for_loss = self.multi_embedding_weights_init()
-        # ebdd_weights_hist_org_summary = tf.summary.histogram("ebdd_weight_org_hist", ebdd_weights_org)
-        # ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist", ebdd_weights_for_net)
-        # ebdd_weights_hist_loss_summary = tf.summary.histogram("ebdd_weight_loss_hist", ebdd_weights_for_loss)
+        ebdd_weights_for_loss, \
+        ebdd_dictionary, \
+        ebdd_vector = self.embedder_for_base_training()
         return_dict_for_summary.update({"ebdd_weight_org_hist":ebdd_weights_org})
         return_dict_for_summary.update({"ebdd_weight_net_hist": ebdd_weights_for_net})
         return_dict_for_summary.update({"ebdd_weight_loss_hist": ebdd_weights_for_loss})
-        return_dict_for_summary.update({"ebdd_weights_dynamic":ebdd_weights_dynamic})
-
-
-        # ebdd_weights_dynamic_bar_placeholder = tf.placeholder(tf.float32, [1, 900 * len(self.fine_tune), 1200, 4])
-        # ebdd_weights_dynamic_bar_summary = tf.summary.image("ebdd_weights_dynamic",
-        #                                                     ebdd_weights_dynamic_bar_placeholder)
-
-
-        ebdd_dictionary = init_embedding_dictionary(size=self.font_num_for_train, dimension=self.ebdd_dictionary_dim,
-                                                    parameter_update_device=self.parameter_update_device)
-        ebdd_vector = tf.matmul(ebdd_weights_for_net, ebdd_dictionary)
-        ebdd_vector = tf.reshape(ebdd_vector, [self.batch_size, 1, 1, self.ebdd_dictionary_dim])
-
+        return_dict_for_summary.update({"ebdd_weights_house":ebdd_weights_house})
 
 
         # target images
@@ -391,9 +408,6 @@ class UNet(object):
         real_A = real_data[:, :, :, self.input_filters:self.input_filters + self.output_filters]
 
 
-        # ebdd processing
-
-        #ebdd_vector = tf.nn.ebdd_lookup(ebdd_dictionary, ids=ebdd_weights)
 
 
         fake_B, encoded_real_B = self.generator(images=real_A,
@@ -418,27 +432,22 @@ class UNet(object):
         # should reside in the same space and close to each other
         encoded_fake_B = self.encoder(fake_B, is_training, reuse=True)[0]
         const_loss = tf.reduce_mean(tf.square(encoded_real_B - encoded_fake_B)) * self.Lconst_penalty
-        #const_loss_summary = tf.summary.scalar("const_loss", const_loss)
         return_dict_for_summary.update({"const_loss": const_loss})
 
         # L1 loss between real and generated images
         l1_loss = self.L1_penalty * tf.reduce_mean(tf.abs(fake_B - real_B))
-        #l1_loss_summary = tf.summary.scalar("l1_loss", l1_loss)
         return_dict_for_summary.update({"l1_loss": l1_loss})
 
 
 
         # category loss
         true_labels = tf.reshape(ebdd_weights_for_loss,
-                                 shape=[self.batch_size, self.font_num_for_train])
+                                 shape=[self.batch_size, self.base_training_font_num])
         real_category_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_category_logits,
                                                                                     labels=true_labels))
         fake_category_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_category_logits,
                                                                                     labels=true_labels))
         category_loss = (real_category_loss + fake_category_loss) / 2.0
-        # fake_category_loss_summary = tf.summary.scalar("category_fake_loss", fake_category_loss)
-        # real_category_loss_summary = tf.summary.scalar("category_real_loss", real_category_loss)
-        # category_loss_summary = tf.summary.scalar("category_loss", category_loss)
         return_dict_for_summary.update({"real_category_loss": real_category_loss})
         return_dict_for_summary.update({"fake_category_loss": fake_category_loss})
         return_dict_for_summary.update({"category_loss": category_loss})
@@ -450,8 +459,6 @@ class UNet(object):
                                                                              labels=tf.ones_like(real_D)))
         d_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_D_logits,
                                                                              labels=tf.zeros_like(fake_D)))
-        # d_loss_real_summary = tf.summary.scalar("d_loss_real", d_loss_real)
-        # d_loss_fake_summary = tf.summary.scalar("d_loss_fake", d_loss_fake)
         return_dict_for_summary.update({"d_loss_real": d_loss_real})
         return_dict_for_summary.update({"d_loss_fake": d_loss_fake})
 
@@ -460,7 +467,6 @@ class UNet(object):
         # maximize the chance generator fool the discriminator (for the generator)
         cheat_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_D_logits,
                                                                             labels=tf.ones_like(fake_D)))
-        #cheat_loss_summary = tf.summary.scalar("cheat_loss", cheat_loss)
         return_dict_for_summary.update({"cheat_loss": cheat_loss})
 
 
@@ -469,39 +475,29 @@ class UNet(object):
         # embedding weight loss && difference checker
         ebdd_weight_loss = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_org,axis=1),tf.ones([self.batch_size],dtype=tf.float32)))) * self.ebdd_weight_penalty
 
-        #ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_weight_loss)
         return_dict_for_summary.update({"ebdd_weight_loss": ebdd_weight_loss})
 
-        ebdd_weight_dynamic_difference_from_one = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_dynamic,axis=1),tf.ones([self.font_num_for_fine_tune_max],dtype=tf.float32)))) * self.ebdd_weight_penalty
-        #ebdd_weight_dynamic_difference_from_one_summary = tf.summary.scalar("ebdd_weight_dynamic_difference_from_one",ebdd_weight_dynamic_difference_from_one)
+        ebdd_weight_dynamic_difference_from_one = tf.reduce_mean(tf.abs(tf.subtract(tf.reduce_sum(ebdd_weights_house,axis=1),tf.ones([self.max_transfer_font_num],dtype=tf.float32)))) * self.ebdd_weight_penalty
         return_dict_for_summary.update({"ebdd_weight_dynamic_difference_from_one": ebdd_weight_dynamic_difference_from_one})
 
 
-        targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.font_num_for_train),name="target_label")
+        targeted_label = tf.placeholder(tf.float32, shape=(self.batch_size, self.base_training_font_num),name="target_label")
         if self.training_mode==1:
             label_difference_org = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_org)))
             label_difference_net = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_net)))
             label_difference_loss = tf.reduce_mean(tf.abs(tf.subtract(targeted_label, ebdd_weights_for_loss)))
-            # ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org_batch", label_difference_org)
-            # ebdd_label_diff_net_summary = tf.summary.scalar("ebdd_label_diff_net_batch", label_difference_net)
-            # ebdd_label_diff_loss_summary = tf.summary.scalar("ebdd_label_diff_loss_batch", label_difference_loss)
             return_dict_for_summary.update({"ebdd_label_diff_org_batch":label_difference_org})
             return_dict_for_summary.update({"ebdd_label_diff_net_batch": label_difference_net})
             return_dict_for_summary.update({"ebdd_label_diff_loss_batch": label_difference_loss})
 
             fine_tune_list = list()
-            for ii in self.fine_tune:
+            for ii in self.involved_font_list:
                 fine_tune_list.append(ii)
 
-            #ebdd_weight_checker_summary=list()
             ebdd_weight_checker_list=list()
-            for travelling_label in self.fine_tune:
-
-                #checker_name=("ebdd_weight_checker@Label%d" % travelling_label)
-                ebdd_weight_checker_list.append(ebdd_weights_dynamic[travelling_label,travelling_label])
-
-                #ebdd_weight_checker_summary.append(tf.summary.scalar(checker_name,ebdd_weights_dynamic[travelling_label,travelling_label]))
-
+            for travelling_label in self.involved_font_list:
+                found_index=self.involved_font_list.index(travelling_label)
+                ebdd_weight_checker_list.append(ebdd_weights_house[found_index,found_index])
             return_dict_for_summary.update({"ebdd_weight_checker_list":ebdd_weight_checker_list})
 
 
@@ -509,11 +505,9 @@ class UNet(object):
 
 
         d_loss = d_loss_real + d_loss_fake + category_loss
-        #d_loss_summary = tf.summary.scalar("d_loss", d_loss)
         return_dict_for_summary.update({"d_loss": d_loss})
 
         g_loss = l1_loss + const_loss + ebdd_weight_loss + cheat_loss + fake_category_loss
-        #g_loss_summary = tf.summary.scalar("g_loss", g_loss)
         return_dict_for_summary.update({"g_loss": g_loss})
 
 
@@ -522,7 +516,7 @@ class UNet(object):
 
         # expose useful nodes in the graph as handles globally
         current_input_handle = InputHandle(real_data=real_data,
-                                   ebdd_weights_static=ebdd_weights_static,
+                                   input_one_hot_label_container=input_one_hot_label_container,
                                    targeted_label=targeted_label)
         inputHandleList.append(current_input_handle)
 
@@ -543,7 +537,7 @@ class UNet(object):
                                  source=real_A,
                                  ebdd_dictionary=ebdd_dictionary,
                                  real_data=real_data,
-                                 ebdd_weights_static=ebdd_weights_static)
+                                 input_one_hot_label_container=input_one_hot_label_container)
 
 
 
@@ -564,8 +558,8 @@ class UNet(object):
         dis_vars = [var for var in t_vars if 'dis_' in var.name]
         gen_enc_vals =  [var for var in t_vars if 'gen_enc' in var.name]
         gen_dec_vals =  [var for var in t_vars if 'gen_dec' in var.name]
-        gen_ebdd_dictionary_vals = [var for var in t_vars if 'gen_ebdd_dictionary' in var.name]
-        gen_ebdd_weights_vals = [var for var in t_vars if 'gen_ebdd_weights_dynamic' in var.name]
+        #gen_ebdd_dictionary_vals = [var for var in t_vars if 'gen_ebdd_dictionary' in var.name]
+        gen_ebdd_weights_vals = [var for var in t_vars if 'gen_ebdd_weights_house' in var.name]
 
 
 
@@ -655,7 +649,7 @@ class UNet(object):
                                                  eval_handle.target],
                                                 feed_dict={
                                                     eval_handle.real_data: input_images,
-                                                    eval_handle.ebdd_weights_static: ebdd_weights,
+                                                    eval_handle.input_one_hot_label_container: ebdd_weights,
                                                 })
 
 
@@ -685,7 +679,7 @@ class UNet(object):
 
 
         labels, images = next(val_iter)
-        labels = self.dense_to_one_hot(labels, self.font_num_for_train)
+        labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
         fake_imgs, real_imgs = self.generate_fake_samples(images, labels)
 
         current_time=time.strftime('%Y-%m-%d @ %H:%M:%S',time.localtime())
@@ -707,8 +701,9 @@ class UNet(object):
 
     def check_infer_model(self,labels,images):
 
+    
 
-        labels = self.dense_to_one_hot(labels, self.font_num_for_train)
+        labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
         fake_imgs, real_imgs = self.generate_fake_samples(images, labels)
 
         return scale_back(fake_imgs),scale_back(real_imgs)
@@ -834,7 +829,7 @@ class UNet(object):
 
                 ebdd_weight_checker_final.append(tf.stack(values=current_loss_dict['ebdd_weight_checker_list']))
 
-            ebdd_weight_dynamic_checker_final.append(current_loss_dict['ebdd_weights_dynamic'])
+            ebdd_weight_dynamic_checker_final.append(current_loss_dict['ebdd_weights_house'])
 
             ii+=1
 
@@ -855,9 +850,9 @@ class UNet(object):
         ebdd_weights_hist_org_summary = tf.summary.histogram("ebdd_weight_org_hist", ebdd_weight_org_hist_final)
         ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist", ebdd_weight_net_hist_final)
         ebdd_weights_hist_loss_summary = tf.summary.histogram("ebdd_weight_loss_hist", ebdd_weight_loss_hist_final)
-        ebdd_weights_dynamic_bar_placeholder = tf.placeholder(tf.float32, [1, 900 * len(self.fine_tune), 1200, 4])
-        ebdd_weights_dynamic_bar_summary = tf.summary.image("ebdd_weights_dynamic",
-                                                            ebdd_weights_dynamic_bar_placeholder)
+        ebdd_weights_house_bar_placeholder = tf.placeholder(tf.float32, [1, 900 * len(self.involved_font_list), 1200, 4])
+        ebdd_weights_house_bar_summary = tf.summary.image("ebdd_weights_house",
+                                                            ebdd_weights_house_bar_placeholder)
 
 
 
@@ -999,9 +994,9 @@ class UNet(object):
                                        check_train_image_summary=check_train_image_summary,
                                        check_validate_image=check_validate_image,
                                        check_train_image=check_train_image,
-                                       ebdd_weights_dynamic_bar=ebdd_weights_dynamic_bar_summary,
+                                       ebdd_weights_house_bar=ebdd_weights_house_bar_summary,
                                        ebdd_weight_dynamic_checker_final=ebdd_weight_dynamic_checker_final,
-                                       ebdd_weights_dynamic_bar_placeholder=ebdd_weights_dynamic_bar_placeholder)
+                                       ebdd_weights_house_bar_placeholder=ebdd_weights_house_bar_placeholder)
         setattr(self, "summary_handle", summary_handle)
 
 
@@ -1010,6 +1005,15 @@ class UNet(object):
             # for travelling_summary in ebdd_weight_checker_summary:
             #     g_merged_summary = tf.summary.merge([g_merged_summary, travelling_summary])
 
+
+    # def get_label_vec(self,data_provider):
+    #     label_vec=[]
+    #     train_batch_iter = data_provider.get_train_iter(batch_size=1,shuffle=False)
+    #     for bid, batch in enumerate(train_batch_iter):
+    #         label,batch_images = batch
+    #         if not label in label_vec:
+    #             label_vec.append(label)
+    #     return label_vec
 
 
 
@@ -1026,28 +1030,35 @@ class UNet(object):
             learning_rate = tf.placeholder(tf.float32, name="learning_rate")
 
             if self.optimization_method == 'adam':
-                # d_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.d_loss,
-                #                                                                         var_list=d_vars)
-                # g_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5).minimize(loss_handle.g_loss,
-                #                                                                         var_list=g_vars)
                 d_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5)
                 g_optimizer = tf.train.AdamOptimizer(learning_rate, beta1=0.5)
             elif self.optimization_method == 'gradient_descent':
-                # d_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.d_loss,
-                #                                                                         var_list=d_vars)
-                # g_optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(loss_handle.g_loss,
-                #                                                                         var_list=g_vars)
                 d_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
                 g_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
             data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
-                                              filter_by=self.fine_tune, sub_train_set_num=self.sub_train_set_num)
+                                            sub_train_set_num=self.sub_train_set_num)
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
+            self.involved_font_list = data_provider.train_label_vec
+            if (self.training_mode == 0 or self.training_mode == 1) and (len(self.involved_font_list) != self.base_training_font_num):
+                print("Incorrect fonts number for mode %d training !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
+                print("TrainingFontNum:%d, BaseTrainingFontNum:%d" % (
+                    len(self.involved_font_list), self.base_training_font_num))
+                return
+            elif self.training_mode==2 and len(self.involved_font_list)>self.max_transfer_font_num:
+                print("Incorrect fonts number for mode %d training !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
+                print("TrainingFontNum:%d, Maximum:%d" % (
+                    len(self.involved_font_list), self.max_transfer_font_num))
+                return
+            else:
+                print("Involved Font Labels:")
+                print(self.involved_font_list)
+                
+
 
             total_batches = data_provider.compute_total_batch_num(self.batch_size,len(available_gpu_list))
             val_batch_iter = data_provider.get_val_iter(self.batch_size)
-            infer_batch_iter = data_provider.get_val_iter(batch_size=self.batch_size,shuffle=False)
 
 
 
@@ -1158,7 +1169,7 @@ class UNet(object):
 
                     this_itr_start = time.time()
                     labels, batch_images = batch
-                    labels = self.dense_to_one_hot(labels, self.font_num_for_train)
+                    labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
 
                     # Optimize D
                     _, d_summary = self.sess.run(
@@ -1267,9 +1278,9 @@ class UNet(object):
                                 weight_to_plot=summary_handle.ebdd_weight_dynamic_checker_final.eval(
                                     session=self.sess), epoch=ei)
                             weight_bar_img = self.png_read(weights_bar_img_path)
-                            weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_dynamic_bar,
+                            weight_org_bar_summary_out = self.sess.run(summary_handle.ebdd_weights_house_bar,
                                                                        feed_dict={
-                                                                           summary_handle.ebdd_weights_dynamic_bar_placeholder: weight_bar_img})
+                                                                           summary_handle.ebdd_weights_house_bar_placeholder: weight_bar_img})
                             summary_writer.add_summary(weight_org_bar_summary_out, self.counter)
                             summary_writer.flush()
                             print(self.print_separater)
@@ -1308,10 +1319,24 @@ class UNet(object):
         with tf.Graph().as_default(), tf.device(self.parameter_update_device):
 
 
-            data_provider = TrainDataProvider(infer_name=self.infer_obj_name,
-                                              filter_by=self.fine_tune, infer_mark=True)
+            data_provider = TrainDataProvider(infer_name=self.infer_obj_name, infer_mark=True)
+            self.involved_font_list = data_provider.train_label_vec
+            if (self.training_mode == 0 or self.training_mode == 1) and (len(self.involved_font_list) != self.base_training_font_num):
+                print("Incorrect fonts number for mode %d inferring !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
+                print("TrainingFontNum:%d, BaseTrainingFontNum:%d" % (
+                    len(self.involved_font_list), self.base_training_font_num))
+                return
+            elif self.training_mode==2 and len(self.involved_font_list)>self.max_transfer_font_num:
+                print("Incorrect fonts number for mode %d inferring !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
+                print("TrainingFontNum:%d, Maximum:%d" % (
+                    len(self.involved_font_list), self.max_transfer_font_num))
+                return
+            else:
+                print("Involved Font Labels:")
+                print(self.involved_font_list)
+
             infer_batch_iter = data_provider.get_infer_iter(batch_size=self.batch_size,shuffle=False)
-            num_for_each_font = len(data_provider.infer.examples) / len(self.fine_tune)
+            num_for_each_font = len(data_provider.infer.examples) / len(self.involved_font_list)
             character_num_col = int(np.ceil(np.sqrt(num_for_each_font)))
             character_num_row = character_num_col
 
@@ -1391,6 +1416,7 @@ class UNet(object):
 
                     counter_in_one_font += 1
                     full_counter +=1
+                    #print(full_counter)
 
 
 
@@ -1399,12 +1425,10 @@ class UNet(object):
                         final_image_fake[ii].save(os.path.join(self.inferred_result_saving_path,"Font%d_InferredCopy:%d.png" % (labels[0],ii)))
                     final_image_real.save(os.path.join(self.inferred_result_saving_path,"Font%d_Real.png" %(labels[0])))
                     print("Image saved for %s with label %d" % (self.inferred_result_saving_path,labels[0]))
-                    if full_counter>=len(data_provider.infer.examples):
-                        break
-                    else:
-                        counter_in_one_font = 0
+                    counter_in_one_font = 0
+                        
 
-                #print("Inferred:%s with sampleNo:%d/%d, Label:%d/%d, time:%.2f per character" % (self.inferred_result_saving_path,counter_in_one_font,num_for_each_font,labels[0],len(self.fine_tune),duration/self.infer_copy_num))
+                #print("Inferred:%s with sampleNo:%d/%d, Label:%d/%d, time:%.2f per character" % (self.inferred_result_saving_path,counter_in_one_font,num_for_each_font,labels[0],len(self.involved_font_list),duration/self.infer_copy_num))
 
 
 
@@ -1414,33 +1438,46 @@ class UNet(object):
 
 
     def dense_to_one_hot(self,input_label,label_length):
+
+        input_label_matrix = np.tile(np.asarray(input_label), [len(self.involved_font_list), 1])
+        fine_tune_martix = np.transpose(np.tile(self.involved_font_list, [self.batch_size, 1]))
+        diff=input_label_matrix-fine_tune_martix
+        find_positions = np.argwhere(np.transpose(diff) == 0)
+        input_label_indices=np.transpose(find_positions[:,1:]).tolist()
+
+        # input_label_indices_test=list()
+        # for label_traveller in input_label:
+        #     input_label_indices_test.append(self.involved_font_list.index(label_traveller))
+
+
         output_one_hot_label=np.zeros((len(input_label),label_length),dtype=np.float32)
-        output_one_hot_label[np.arange(len(input_label)),input_label]=1
+        output_one_hot_label[np.arange(len(input_label)),input_label_indices]=1
         return output_one_hot_label
 
 
     def weight_plot_and_save(self,weight_to_plot,epoch):
-        plt.subplots(nrows=len(self.fine_tune),ncols=1,figsize=(12,9*len(self.fine_tune)),dpi=100)
+        plt.subplots(nrows=len(self.involved_font_list),ncols=1,figsize=(12,9*len(self.involved_font_list)),dpi=100)
 
         counter=0
-        for travelling_labels in self.fine_tune:
-            plt.subplot(len(self.fine_tune), 1, counter+1)
+        for travelling_labels in self.involved_font_list:
+            label_index=self.involved_font_list.index(travelling_labels)
+            plt.subplot(len(self.involved_font_list), 1, counter+1)
 
-            y_pos = np.arange(len(weight_to_plot[travelling_labels, :]))
+            y_pos = np.arange(len(weight_to_plot[label_index, :]))
 
-            multiple_bars = plt.bar(y_pos, weight_to_plot[travelling_labels, :], align='center', alpha=0.5,yerr=0.001)
+            multiple_bars = plt.bar(y_pos, weight_to_plot[label_index, :], align='center', alpha=0.5,yerr=0.001)
             plt.xticks(y_pos)
             plt.title('LabelNo%d' % travelling_labels)
 
-            max_value = np.max(np.abs(weight_to_plot[travelling_labels, :]))
+            max_value = np.max(np.abs(weight_to_plot[label_index, :]))
             bar_counter=0
             for bar in multiple_bars:
                 height = bar.get_height()
-                if weight_to_plot[travelling_labels,bar_counter]>0:
+                if weight_to_plot[label_index,bar_counter]>0:
                     num_y_pos = height + max_value * 0.03
                 else:
                     num_y_pos = -height -max_value * 0.15
-                plt.text(bar.get_x()+bar.get_width()/4.,num_y_pos, '%.4f' % float(weight_to_plot[travelling_labels,bar_counter]))
+                plt.text(bar.get_x()+bar.get_width()/4.,num_y_pos, '%.4f' % float(weight_to_plot[label_index,bar_counter]))
                 bar_counter=bar_counter+1
 
             plt.show()
@@ -1476,16 +1513,16 @@ class UNet(object):
         for ii in range(availalbe_device_num):
 
             # real_data = inputHandleList[ii].real_data
-            # ebdd_weights_static = inputHandleList[ii].ebdd_weights_static
+            # input_one_hot_label_container = inputHandleList[ii].input_one_hot_label_container
             output_dict.update({inputHandleList[ii].real_data: batch_images[ii * batch_size_real:(ii + 1) * batch_size_real, :, :, :]})
-            output_dict.update({inputHandleList[ii].ebdd_weights_static: labels[ii * batch_size_real:(ii + 1) * batch_size_real, :]})
+            output_dict.update({inputHandleList[ii].input_one_hot_label_container: labels[ii * batch_size_real:(ii + 1) * batch_size_real, :]})
             output_dict.update({learning_rate: current_lr})
         return output_dict
 
     def feed_dictionary_generation_for_g(self,batch_images,labels,current_lr,learning_rate,availalbe_device_num):
         # input_handle, _, _, _, _ = self.retrieve_handles()
         # real_data = input_handle.real_data
-        # ebdd_weights_static = input_handle.ebdd_weights_static
+        # input_one_hot_label_container = input_handle.input_one_hot_label_container
         # targeted_label = input_handle.targeted_label
         output_dict = {}
         batch_size_real = batch_images.shape[0] / availalbe_device_num
@@ -1493,10 +1530,10 @@ class UNet(object):
         for ii in range(availalbe_device_num):
 
             output_dict.update({inputHandleList[ii].real_data: batch_images[ii * batch_size_real:(ii + 1) * batch_size_real, :, :, :]})
-            output_dict.update({inputHandleList[ii].ebdd_weights_static: labels[ii * batch_size_real:(ii + 1) * batch_size_real, :]})
+            output_dict.update({inputHandleList[ii].input_one_hot_label_container: labels[ii * batch_size_real:(ii + 1) * batch_size_real, :]})
             output_dict.update({learning_rate: current_lr})
 
-            if self.freeze_ebdd_weights == False:
+            if self.training_mode == 1:
                 output_dict.update({inputHandleList[ii].targeted_label: labels[ii * batch_size_real:(ii + 1) * batch_size_real, :]})
 
 

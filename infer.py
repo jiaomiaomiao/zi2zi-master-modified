@@ -6,35 +6,22 @@ import tensorflow as tf
 from tensorflow.python.client import device_lib
 
 import argparse
-import numpy as np
 import os
 import shutil
 from os import listdir
 
 
 from model.unet import UNet
-#from model.unet import UNet
 
 
 input_args = ['--training_mode','2',
               '--base_trained_model_dir', '/data/Harric/Chinese_Character_Generation/New_Font_Generation/experiment_3_hw_fonts_mode_2/checkpoint/',
               '--infer_copy_num','5',
-
               '--inferred_result_saving_path','/home/harric/Desktop/Infer_HW/',
-
               '--infer_name','/data/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_HW_1/essay_simplified.obj',
-              #'--infer_name','./train_debug.obj',
-
-
-
-
-
-              '--font_num_for_train','20',
-              '--fine_tune','1,6,10',
-
+              '--base_training_font_num','20',
               '--freeze_encoder','0',
               '--freeze_decoder','0',
-
               ]
 
 
@@ -55,14 +42,12 @@ parser.add_argument('--infer_copy_num',dest='infer_copy_num',type=int,required=T
 
 
 # input data setting
-# parser.add_argument('--train_name',dest='train_name',type=str,default='train.obj')
-# parser.add_argument('--val_name',dest='val_name',type=str,default='val.obj')
 parser.add_argument('--infer_name',dest='infer_name',type=str,required=True)
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, required=True,
-                    help="number for distinct fonts for train")
+parser.add_argument('--base_training_font_num', dest='base_training_font_num', type=int, required=True,
+                    help="number of distinct base fonts for train with mode 0")
 parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
                     help="dimension for ebdd dictionary")
 
@@ -79,10 +64,6 @@ parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',typ
 
 
 # specific training scheme setting
-parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
-                    help='specific labels id to be fine tuned')
-
-
 parser.add_argument('--freeze_encoder', dest='freeze_encoder', type=int, required=True,
                     help="freeze encoder weights during training")
 parser.add_argument('--freeze_decoder', dest='freeze_decoder', type=int, required=True,
@@ -132,21 +113,6 @@ def main(_):
     print("Available devices for parameter update:%s" % parameter_update_device)
 
 
-    if args.fine_tune=='All':
-        args.fine_tune=''
-        for ii in range(args.font_num_for_train):
-            if ii==0:
-                args.fine_tune=args.fine_tune+str(ii)
-            else:
-                args.fine_tune = args.fine_tune + ','+str(ii)
-
-    ids = args.fine_tune.split(",")
-    fine_tune_list = set([int(i) for i in ids])
-
-
-
-
-
 
 
 
@@ -154,22 +120,8 @@ def main(_):
                            base_trained_model_dir=args.base_trained_model_dir,
                            infer_obj_name=args.infer_name,
                            infer_copy_num=args.infer_copy_num,
-
-
-
                            ebdd_dictionary_dim=args.ebdd_dictionary_dim,
-
-
-
-
-                           font_num_for_train=args.font_num_for_train,
-
-
-
-                           freeze_encoder=args.freeze_encoder,freeze_decoder=args.freeze_decoder,
-
-                           fine_tune=fine_tune_list,
-
+                           base_training_font_num=args.base_training_font_num,
                            parameter_update_device=parameter_update_device,
                            forward_backward_device=forward_backward_device_list)
 
