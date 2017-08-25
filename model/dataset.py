@@ -69,15 +69,12 @@ def get_batch_iter(examples, batch_size, augment):
                 img_A = shift_and_resize_image(img_A, shift_x, shift_y, nw, nh)
                 img_B = shift_and_resize_image(img_B, shift_x, shift_y, nw, nh)
 
-                rotate_times_A=np.random.randint(low=0,high=4)
-                flip_axis_A=np.random.randint(low=0,high=2)
-                img_A=np.rot90(img_A,rotate_times_A,(0,1))
-                img_A=np.flip(img_A,flip_axis_A)
-
-                rotate_times_B = np.random.randint(low=0, high=4)
-                flip_axis_B = np.random.randint(low=0, high=2)
-                img_B = np.rot90(img_B, rotate_times_B, (0, 1))
-                img_B = np.flip(img_B, flip_axis_B)
+                rotate_times=np.random.randint(low=0,high=4)
+                flip_axis=np.random.randint(low=0,high=2)
+                img_A=np.rot90(img_A,rotate_times,(0,1))
+                img_A=np.flip(img_A,flip_axis)
+                img_B = np.rot90(img_B, rotate_times, (0, 1))
+                img_B = np.flip(img_B, flip_axis)
 
 
 

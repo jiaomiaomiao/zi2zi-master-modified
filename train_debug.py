@@ -36,6 +36,9 @@ input_args = ['--training_mode','0',
               '--freeze_encoder','0',
               '--freeze_decoder','0',
 
+              '--ebdd_dictionary_dim','256',
+
+
               '--device_mode','0',
               ]
 # device_mode=0: training only on cpu
@@ -74,8 +77,9 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 # ebdd setting
 parser.add_argument('--base_training_font_num', dest='base_training_font_num', type=int, required=True,
                     help="number for distinct base fonts for train with mode 0")
-parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
+parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, required=True,
                     help="dimension for ebdd dictionary")
+
 
 # training param setting
 parser.add_argument('--itrs', dest='itrs', type=int, required=True, help='number of itrs')

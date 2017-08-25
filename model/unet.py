@@ -658,7 +658,6 @@ class UNet(object):
 
     def check_train_model(self,batch_labels,batch_images,epoch,save_path_prefix):
 
-        #labels = self.dense_to_one_hot(batch_labels, self.font_num_for_train)
         fake_imgs, real_imgs = self.generate_fake_samples(batch_images, batch_labels)
 
         current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
@@ -678,8 +677,9 @@ class UNet(object):
     def check_validate_model(self,val_iter, epoch,save_path_prefix):
 
 
+
         labels, images = next(val_iter)
-        labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
+        labels = self.dense_to_one_hot(input_label=labels, label_length=len(self.involved_font_list),multi_gpu_mark=False)
         fake_imgs, real_imgs = self.generate_fake_samples(images, labels)
 
         current_time=time.strftime('%Y-%m-%d @ %H:%M:%S',time.localtime())
@@ -703,7 +703,7 @@ class UNet(object):
 
     
 
-        labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
+        labels = self.dense_to_one_hot(input_label=labels, label_length=len(self.involved_font_list),multi_gpu_mark=False)
         fake_imgs, real_imgs = self.generate_fake_samples(images, labels)
 
         return scale_back(fake_imgs),scale_back(real_imgs)
@@ -1019,10 +1019,12 @@ class UNet(object):
 
     def train_procedures(self):
 
+        print("EbddDicDim:%d" % self.ebdd_dictionary_dim)
+
 
         tower_loss_list=[]
-        #available_gpu_list = self.get_available_gpus()
-        available_gpu_list = self.forward_backward_device
+        #self.available_gpu_list = self.get_available_gpus()
+        self.available_gpu_list = self.forward_backward_device
 
         with tf.Graph().as_default(), tf.device(self.parameter_update_device):
             global_step = tf.get_variable('global_step',[],initializer=tf.constant_initializer(0),trainable=False)
@@ -1038,7 +1040,7 @@ class UNet(object):
 
             data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
                                             sub_train_set_num=self.sub_train_set_num)
-            self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(available_gpu_list))
+            self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
             self.involved_font_list = data_provider.train_label_vec
             if (self.training_mode == 0 or self.training_mode == 1) and (len(self.involved_font_list) != self.base_training_font_num):
@@ -1057,7 +1059,7 @@ class UNet(object):
                 
 
 
-            total_batches = data_provider.compute_total_batch_num(self.batch_size,len(available_gpu_list))
+            total_batches = data_provider.compute_total_batch_num(self.batch_size,len(self.available_gpu_list))
             val_batch_iter = data_provider.get_val_iter(self.batch_size)
 
 
@@ -1067,8 +1069,8 @@ class UNet(object):
             tower_grads_g_again = []
             # tower_grads_l1 = []
             with tf.variable_scope(tf.get_variable_scope()):
-                for ii in xrange(len(available_gpu_list)):
-                    with tf.device(available_gpu_list[ii]):
+                for ii in xrange(len(self.available_gpu_list)):
+                    with tf.device(self.available_gpu_list[ii]):
                         with tf.name_scope('tower_%d' % (ii)) as scope:
                             tower_loss_list.append(self.build_model(current_gpu_id=ii))
                             g_vars, d_vars, all_vars,str_marks = \
@@ -1101,7 +1103,7 @@ class UNet(object):
 
                         print(
                             "Initialization for %s completed with Encoder/Decoder/Discriminator/EbddWeights Freeze/NonFreeze 0/1: %s"
-                            % (available_gpu_list[ii], str_marks))
+                            % (self.available_gpu_list[ii], str_marks))
 
 
 
@@ -1155,7 +1157,7 @@ class UNet(object):
 
             summary_handle = getattr(self, "summary_handle")
             for ei in range(self.epoch):
-                train_batch_iter = data_provider.get_train_iter(self.batch_size * len(available_gpu_list))
+                train_batch_iter = data_provider.get_train_iter(self.batch_size * len(self.available_gpu_list))
 
                 if (ei + 1) % self.schedule == 0:
                     update_lr = current_lr / 2.0
@@ -1169,7 +1171,7 @@ class UNet(object):
 
                     this_itr_start = time.time()
                     labels, batch_images = batch
-                    labels = self.dense_to_one_hot(labels, len(self.involved_font_list))
+                    labels = self.dense_to_one_hot(input_label=labels, label_length=len(self.involved_font_list),multi_gpu_mark=True)
 
                     # Optimize D
                     _, d_summary = self.sess.run(
@@ -1179,7 +1181,7 @@ class UNet(object):
                                                                         current_lr=current_lr,
                                                                         learning_rate=learning_rate,
                                                                         availalbe_device_num=len(
-                                                                            available_gpu_list)))
+                                                                            self.available_gpu_list)))
 
                     # Optimize G
                     _ = self.sess.run(
@@ -1189,7 +1191,7 @@ class UNet(object):
                                                                         current_lr=current_lr,
                                                                         learning_rate=learning_rate,
                                                                         availalbe_device_num=len(
-                                                                            available_gpu_list)))
+                                                                            self.available_gpu_list)))
                     # magic move to Optimize G again
                     # according to https://github.com/carpedm20/DCGAN-tensorflow
                     # collect all the losses along the way
@@ -1198,14 +1200,14 @@ class UNet(object):
                     #                                                     labels=labels,
                     #                                                     current_lr=current_lr,
                     #                                                     learning_rate=learning_rate,
-                    #                                                     availalbe_device_num=len(available_gpu_list)))
+                    #                                                     availalbe_device_num=len(self.available_gpu_list)))
                     _, g_summary = self.sess.run([apply_gradient_op_g_again, summary_handle.g_merged],
                                                  feed_dict=self.feed_dictionary_generation_for_g(
                                                      batch_images=batch_images,
                                                      labels=labels,
                                                      current_lr=current_lr,
                                                      learning_rate=learning_rate,
-                                                     availalbe_device_num=len(available_gpu_list)))
+                                                     availalbe_device_num=len(self.available_gpu_list)))
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     passed_full = time.time() - start_time
                     passed_itr = time.time() - this_itr_start
@@ -1233,7 +1235,7 @@ class UNet(object):
                     if self.counter % self.sample_steps == 0:
                         print(self.print_separater)
                         # sample the current model states with val data
-                        batch_size_real = batch_images.shape[0] / len(available_gpu_list)
+                        batch_size_real = batch_images.shape[0] / len(self.available_gpu_list)
                         summary_handle = getattr(self, "summary_handle")
                         # eval_handle = getattr(self, "eval_handle")
 
@@ -1314,7 +1316,7 @@ class UNet(object):
         self.freeze_decoder = freeze_decoder
 
 
-        available_gpu_list = self.forward_backward_device
+        self.available_gpu_list = self.forward_backward_device
 
         with tf.Graph().as_default(), tf.device(self.parameter_update_device):
 
@@ -1344,7 +1346,7 @@ class UNet(object):
 
 
             with tf.variable_scope(tf.get_variable_scope()):
-                with tf.device(available_gpu_list[0]):
+                with tf.device(self.available_gpu_list[0]):
                     with tf.name_scope('tower_%d' % (0)) as scope:
                         self.build_model(current_gpu_id=0)
                         g_vars, d_vars, all_vars, str_marks = \
@@ -1355,7 +1357,7 @@ class UNet(object):
 
                     print(
                         "Initialization for %s completed with Encoder/Decoder/Discriminator/EbddWeights Freeze/NonFreeze 0/1: %s"
-                        % (available_gpu_list[0], str_marks))
+                        % (self.available_gpu_list[0], str_marks))
 
 
 
@@ -1437,10 +1439,14 @@ class UNet(object):
 
 
 
-    def dense_to_one_hot(self,input_label,label_length):
+    def dense_to_one_hot(self,input_label,label_length,multi_gpu_mark=True):
 
         input_label_matrix = np.tile(np.asarray(input_label), [len(self.involved_font_list), 1])
-        fine_tune_martix = np.transpose(np.tile(self.involved_font_list, [self.batch_size, 1]))
+        if multi_gpu_mark==True:
+            fine_tune_martix = np.transpose(np.tile(self.involved_font_list, [self.batch_size*len(self.available_gpu_list), 1]))
+        else:
+            fine_tune_martix = np.transpose(
+                np.tile(self.involved_font_list, [self.batch_size, 1]))
         diff=input_label_matrix-fine_tune_martix
         find_positions = np.argwhere(np.transpose(diff) == 0)
         input_label_indices=np.transpose(find_positions[:,1:]).tolist()
