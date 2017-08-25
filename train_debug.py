@@ -10,7 +10,7 @@ import argparse
 from model.unet import UNet
 
 
-input_args = ['--training_mode','2',
+input_args = ['--training_mode','0',
               '--base_trained_model_dir', '../Bases/experiment_debug_batch_7_mode_0',
 
               '--experiment_id','debug',
@@ -21,8 +21,7 @@ input_args = ['--training_mode','2',
               '--val_name','../Bases/essay_simplified.obj',
 
               '--batch_size', '7',
-
-              '--resume_training','1',
+              '--resume_training','0',
 
               '--sample_steps','1',
               '--checkpoint_steps','1',
@@ -188,7 +187,6 @@ def main(_):
                            L1_penalty=args.L1_penalty,
                            Lconst_penalty=args.Lconst_penalty,
                            ebdd_weight_penalty=args.ebdd_weight_penalty,
-
 
                            base_training_font_num=args.base_training_font_num,
 

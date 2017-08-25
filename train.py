@@ -16,13 +16,10 @@ input_args = ['--training_mode','0',
 
               '--experiment_id','20_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
 
-              # '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/train.obj',
-              # '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_170_PF/val.obj',
               '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/train_full_train.obj',
               '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/val_full_train.obj',
 
               '--batch_size', '64',
-
               '--resume_training','0',
 
               '--sample_steps','35',
@@ -32,9 +29,8 @@ input_args = ['--training_mode','0',
               '--schedule','3',
               '--optimization_method','adam',
 
-              '--font_num_for_train','20',
-              '--fine_tune','All', #'All' or list all labels to be fine tuned
-              '--sub_train_set_num','3000',
+              '--base_training_font_num','20',
+              '--sub_train_set_num','-1',
 
               '--freeze_encoder','0',
               '--freeze_decoder','0',
@@ -81,8 +77,8 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 
 
 # ebdd setting
-parser.add_argument('--font_num_for_train', dest='font_num_for_train', type=int, required=True,
-                    help="number for distinct fonts for train")
+parser.add_argument('--base_training_font_num', dest='base_training_font_num', type=int, required=True,
+                    help="number for distinct base fonts for train with mode 0")
 parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
                     help="dimension for ebdd dictionary")
 
@@ -95,8 +91,6 @@ parser.add_argument('--schedule', dest='schedule', type=int, required=True, help
 parser.add_argument('--resume_training', dest='resume_training', type=int, help='resume from previous training',required=True)
 parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',type=str,required=True,
                     help='resume data from what dir')
-parser.add_argument('--inst_norm', dest='inst_norm', type=int, default=0,
-                    help='use conditional instance normalization in your model')
 
 
 # checking && backup setting
@@ -113,8 +107,6 @@ parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=
 
 
 # specific training scheme setting
-parser.add_argument('--fine_tune', dest='fine_tune', type=str, required=True,
-                    help='specific labels id to be fine tuned')
 parser.add_argument('--sub_train_set_num',dest='sub_train_set_num',type=int,default=-1)
 
 
@@ -177,18 +169,6 @@ def main(_):
 
 
 
-    if args.fine_tune == 'All':
-        args.fine_tune = ''
-        for ii in range(args.font_num_for_train):
-            if ii == 0:
-                args.fine_tune = args.fine_tune + str(ii)
-            else:
-                args.fine_tune = args.fine_tune + ',' + str(ii)
-
-    ids = args.fine_tune.split(",")
-    fine_tune_list = set([int(i) for i in ids])
-
-
 
     model = UNet(training_mode=args.training_mode,
                  base_trained_model_dir=args.base_trained_model_dir,
@@ -206,19 +186,17 @@ def main(_):
                  Lconst_penalty=args.Lconst_penalty,
                  ebdd_weight_penalty=args.ebdd_weight_penalty,
 
-                 font_num_for_train=args.font_num_for_train,
+                 base_training_font_num=args.base_training_font_num,
 
                  resume_training=args.resume_training,
+
                  freeze_encoder=args.freeze_encoder, freeze_decoder=args.freeze_decoder,
 
-                 fine_tune=fine_tune_list,
                  sub_train_set_num=args.sub_train_set_num,
 
                  parameter_update_device=parameter_update_device,
                  forward_backward_device=forward_backward_device_list
                  )
-    # model.register_session(sess)
-    # model.build_model()
 
     model.train_procedures()
 

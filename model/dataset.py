@@ -12,29 +12,36 @@ from .utils import pad_seq, bytes_to_file, \
 class PickledImageProvider(object):
     def __init__(self, obj_path,train_mark=False):
         self.obj_path = obj_path
-        self.examples = self.load_pickled_examples(train_mark)
+        self.examples,self.label_vec = self.load_pickled_examples(train_mark)
 
     def load_pickled_examples(self,train_mark=False):
         with open(self.obj_path, "rb") as of:
             examples = list()
+            label_vec = list()
             while True:
                 try:
                     e = pickle.load(of)
+                    this_label,_= e
+                    if this_label not in label_vec:
+                        label_vec.append(this_label)
                     examples.append(e)
-                    if len(examples) % 10000 == 0:
+                    if len(examples) % 50000 == 0:
                         if train_mark==True:
-                            print("processed %d examples for train" % len(examples))
+                            print("Processed %d examples for train" % len(examples))
                         else:
-                            print("processed %d examples for val" % len(examples))
+                            print("Processed %d examples for val" % len(examples))
                 except EOFError:
                     break
                 except Exception:
                     pass
             if train_mark==True:
-                print("unpickled total %d examples for train" % len(examples))
+                print("Unpickled total %d examples for train" % len(examples))
             else:
-                print("unpickled total %d examples for val" % len(examples))
-            return examples
+                print("Unpickled total %d examples for val" % len(examples))
+
+            label_vec = np.asarray(label_vec).reshape(len(label_vec))
+            label_vec = np.asarray(sorted(label_vec)).reshape(len(label_vec))
+            return examples,label_vec.tolist()
 
 
 def get_batch_iter(examples, batch_size, augment):
@@ -88,9 +95,9 @@ class TrainDataProvider(object):
         if not infer_mark:
 
             self.train = PickledImageProvider(train_name, train_mark=True)
-            self.val = PickledImageProvider(val_name, train_mark=False)
+            self.val= PickledImageProvider(val_name, train_mark=False)
 
-            self.train_label_vec=self.get_label_vec(train_mark=True)
+            self.train_label_vec=self.train.label_vec
 
             # if self.filter_by:
             #     print("filter by label ->", filter_by)
@@ -121,7 +128,7 @@ class TrainDataProvider(object):
             len(self.train.examples), len(self.val.examples)))
         else:
             self.infer = PickledImageProvider(infer_name, train_mark=False)
-            self.train_label_vec = self.get_label_vec(train_mark=False)
+            self.train_label_vec = self.infer.label_vec
             print("in total infer examples -> %d" % (len(self.infer.examples)))
 
 
@@ -134,23 +141,23 @@ class TrainDataProvider(object):
         print ("Epoch Num:%d, Itr Num:%d" % (epoch_num, itr_num) )
         return epoch_num
 
-    def get_label_vec(self,train_mark=True):
-        label_vec=list()
-        counter=0
-        if train_mark:
-            batch_iter = self.get_train_iter(batch_size=1, shuffle=False)
-        else:
-            batch_iter = self.get_infer_iter(batch_size=1, shuffle=False)
-        for bid, batch in enumerate(batch_iter):
-            counter+=1
-            label,batch_images = batch
-            if not label in label_vec:
-                label_vec.append(label)
-            #print(counter)
-        label_vec=np.asarray(label_vec).reshape(len(label_vec))
-        label_vec=np.asarray(sorted(label_vec)).reshape(len(label_vec))
-
-        return label_vec.tolist()
+    # def get_label_vec(self,train_mark=True):
+    #     label_vec=list()
+    #     counter=0
+    #     if train_mark:
+    #         batch_iter = self.get_train_iter(batch_size=1, shuffle=False)
+    #     else:
+    #         batch_iter = self.get_infer_iter(batch_size=1, shuffle=False)
+    #     for bid, batch in enumerate(batch_iter):
+    #         counter+=1
+    #         label,batch_images = batch
+    #         if not label in label_vec:
+    #             label_vec.append(label)
+    #         #print(counter)
+    #     label_vec=np.asarray(label_vec).reshape(len(label_vec))
+    #     label_vec=np.asarray(sorted(label_vec)).reshape(len(label_vec))
+    #
+    #     return label_vec.tolist()
 
 
 
