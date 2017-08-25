@@ -15,10 +15,10 @@ input_args = ['--training_mode','0',
 
               '--experiment_id','debug',
 
-              # '--train_name','./train_debug.obj',
-              # '--val_name','./train_debug.obj',
-              '--train_name','../Bases/essay_simplified.obj',
-              '--val_name','../Bases/essay_simplified.obj',
+              '--train_name','./train_debug.obj',
+              '--val_name','./train_debug.obj',
+              # '--train_name','../Bases/essay_simplified.obj',
+              # '--val_name','../Bases/essay_simplified.obj',
 
               '--batch_size', '7',
               '--resume_training','0',
