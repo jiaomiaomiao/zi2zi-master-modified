@@ -8,32 +8,38 @@ import argparse
 import numpy as np
 
 # from model.unet import UNet
-from model.unet import UNet
+#from model.unet import UNet
+from model.unet_new import UNet
 
 
 input_args = ['--training_mode','0',
-              '--base_trained_model_dir', '/dataA/harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
+              '--base_trained_model_dir', '/dataA/Harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
 
-              '--experiment_id','20_fonts_3000_each_encoder_not_freeze_decoder_not_freeze',
+              '--experiment_id','80_fonts_1500_each_encoder_not_freeze_decoder_not_freeze',
 
-              '--train_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/train_full_train.obj',
-              '--val_name','/dataA/harric/Chinese_Character_Generation/Font_Binary_Data/fonts_20/val_full_train.obj',
+              '--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/train.obj',
+              '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/val.obj',
+
+#'--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_simplified.obj',
+#              '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_traditional.obj',
 
               '--batch_size', '64',
               '--resume_training','0',
 
-              '--sample_steps','35',
-              '--checkpoint_steps','80',
+              '--sample_steps','45',
+              '--checkpoint_steps','90',
               '--summary_steps','3',
-              '--itrs','7500',
-              '--schedule','3',
+              '--itrs','25000',
+              '--schedule','5',
               '--optimization_method','adam',
 
-              '--base_training_font_num','20',
-              '--sub_train_set_num','-1',
+              '--base_training_font_num','80',
+              '--sub_train_set_num','1500',
 
               '--freeze_encoder','0',
               '--freeze_decoder','0',
+
+	      '--ebdd_dictionary_dim','256',
 
 
               '--device_mode','2'
@@ -79,7 +85,7 @@ parser.add_argument('--ebdd_weight_penalty', dest='ebdd_weight_penalty', type=fl
 # ebdd setting
 parser.add_argument('--base_training_font_num', dest='base_training_font_num', type=int, required=True,
                     help="number for distinct base fonts for train with mode 0")
-parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, default=128,
+parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=int, required=True,
                     help="dimension for ebdd dictionary")
 
 # training param setting
