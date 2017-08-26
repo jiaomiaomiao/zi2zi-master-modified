@@ -4,7 +4,9 @@ from __future__ import absolute_import
 import cPickle as pickle
 import numpy as np
 import random
-import os
+# import os
+# import matplotlib.pyplot as plt
+
 from .utils import pad_seq, bytes_to_file, \
     read_split_image, shift_and_resize_image, normalize_image
 
@@ -69,12 +71,17 @@ def get_batch_iter(examples, batch_size, augment):
                 img_A = shift_and_resize_image(img_A, shift_x, shift_y, nw, nh)
                 img_B = shift_and_resize_image(img_B, shift_x, shift_y, nw, nh)
 
-                rotate_times=np.random.randint(low=0,high=4)
-                flip_axis=np.random.randint(low=0,high=2)
-                img_A=np.rot90(img_A,rotate_times,(0,1))
-                img_A=np.flip(img_A,flip_axis)
+
+                rotate_times = np.random.randint(low=0, high=4)
+                img_A = np.rot90(img_A, rotate_times, (0, 1))
                 img_B = np.rot90(img_B, rotate_times, (0, 1))
-                img_B = np.flip(img_B, flip_axis)
+
+                flip_axis = np.random.randint(low=-1, high=2)
+                if not flip_axis==-1:
+                    img_A = np.flip(img_A, flip_axis)
+                    img_B = np.flip(img_B, flip_axis)
+
+
 
 
 
