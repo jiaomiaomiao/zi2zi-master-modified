@@ -1076,10 +1076,12 @@ class UNet(object):
             self.itrs=np.ceil(self.samples_per_font/(self.batch_size*len(self.available_gpu_list))*len(self.involved_font_list))
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
-            print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d" % (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch))
+            learning_rate_decay_rate = np.power(1.0/100.0,1.0/(self.epoch-1))
+            print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d, LearningRateDecay:%.10f Per Epoch" %
+                  (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch,learning_rate_decay_rate))
 
             #self.sample_steps = np.ceil(self.itrs/(2.5*len(self.involved_font_list)*len(self.available_gpu_list)))
-            self.sample_steps = 3000/(self.batch_size*len(self.available_gpu_list))
+            self.sample_steps = 9000/(self.batch_size*len(self.available_gpu_list))
             self.checkpoint_steps = self.sample_steps*10
             self.summary_steps = np.ceil(10 / len(self.available_gpu_list))
             print ("SampleStep:%d, CheckPointStep:%d, SummaryStep:%d" % (self.sample_steps,self.checkpoint_steps,self.summary_steps))
@@ -1258,8 +1260,8 @@ class UNet(object):
                 #     current_lr = update_lr
 
                 if not ei==0:
-                    update_lr = current_lr * 0.95
-                    update_lr = max(update_lr, 0.0002)
+                    update_lr = current_lr * learning_rate_decay_rate
+                    update_lr = max(update_lr, 0.00009)
                     print("decay learning rate from %.7f to %.7f" % (current_lr, update_lr))
                     current_lr = update_lr
 
