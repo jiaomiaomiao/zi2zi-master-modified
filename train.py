@@ -13,9 +13,9 @@ from model.unet_new import UNet
 
 
 input_args = ['--training_mode','0',
-              '--base_trained_model_dir', '/dataA/Harric/Chinese_Character_Generation/BaseModels/base_model_2_batch_64/',
+              '--base_trained_model_dir', './',
 
-              '--experiment_id','80_fonts_1500_each_encoder_not_freeze_decoder_not_freeze',
+              '--experiment_id','20170830',
 
               '--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/train.obj',
               '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/val.obj',
@@ -23,30 +23,30 @@ input_args = ['--training_mode','0',
 #'--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_simplified.obj',
 #              '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_traditional.obj',
 
-              '--batch_size', '64',
+              '--batch_size', '70',
               '--resume_training','0',
 
-              '--sample_steps','45',
-              '--checkpoint_steps','90',
-              '--summary_steps','3',
-              '--itrs','25000',
+              '--samples_per_font','50000',
               '--schedule','5',
               '--optimization_method','adam',
 
               '--base_training_font_num','80',
-              '--sub_train_set_num','1500',
+              '--sub_train_set_num','-1',
 
               '--freeze_encoder','0',
               '--freeze_decoder','0',
 
-	      '--ebdd_dictionary_dim','256',
+	          '--ebdd_dictionary_dim','256',
 
 
-              '--device_mode','2'
+              '--device_mode','3',
+
+              '--data_rotate','0',
+              '--data_flip','0',
               ]
 # device_mode=0: training only on cpu
 # device_mode=1: forward & backward on multiple gpus && parameter update on cpu
-# device_mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
+# device_mode=2: forward & backward on multiple gpus && parameter update on one single gpu
 # device_mode=3: forward & backward & parameter update on a single gpu
 
 
@@ -89,7 +89,8 @@ parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=in
                     help="dimension for ebdd dictionary")
 
 # training param setting
-parser.add_argument('--itrs', dest='itrs', type=int, required=True, help='number of itrs')
+parser.add_argument('--samples_per_font', dest='samples_per_font', type=int, required=True,
+                    help='how many samples shall be seen for a epoch')
 parser.add_argument('--batch_size', dest='batch_size', type=int, help='number of examples in batch',required=True)
 parser.add_argument('--lr', dest='lr', type=float, default=0.001, help='initial learning rate')
 parser.add_argument('--optimization_method',type=str,required=True,help='optimization method selection')
@@ -99,13 +100,7 @@ parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',typ
                     help='resume data from what dir')
 
 
-# checking && backup setting
-parser.add_argument('--sample_steps', dest='sample_steps', type=int, required=True,
-                    help='number of batches in between two samples are drawn from validation set')
-parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, required=True,
-                    help='number of batches in between two checkpoints')
-parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=True,
-                    help='number of batches in between two summaries')
+
 
 
 
@@ -129,10 +124,16 @@ parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=in
 # device selection
 parser.add_argument('--device_mode', dest='device_mode',type=int,required=True,
                     help='Device mode selection')
-# mode=0: training only on cpu
-# mode=1: forward & backward on multiple gpus && parameter update on cpu
-# mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
-# mode=3: forward & backward & parameter update on a single gpu
+
+
+
+# data argument setting
+parser.add_argument('--data_rotate', dest='data_rotate', type=int, required=True,
+                    help="rotate training data")
+parser.add_argument('--data_flip', dest='data_flip', type=int, required=True,
+                    help="flip training data")
+
+
 
 def get_available_gpus():
     local_device_protos = device_lib.list_local_devices()
@@ -181,10 +182,9 @@ def main(_):
                  experiment_dir=args.experiment_dir, experiment_id=args.experiment_id,
                  train_obj_name=args.train_name, val_obj_name=args.val_name,
 
-                 sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,summary_steps=args.summary_steps,
                  optimization_method=args.optimization_method,
 
-                 batch_size=args.batch_size, lr=args.lr, itrs=args.itrs, schedule=args.schedule,
+                 batch_size=args.batch_size, lr=args.lr, samples_per_font=args.samples_per_font, schedule=args.schedule,
 
                  ebdd_dictionary_dim=args.ebdd_dictionary_dim,
 
@@ -201,7 +201,12 @@ def main(_):
                  sub_train_set_num=args.sub_train_set_num,
 
                  parameter_update_device=parameter_update_device,
-                 forward_backward_device=forward_backward_device_list
+                 forward_backward_device=forward_backward_device_list,
+
+                 training_data_rotate=args.data_rotate,
+                 training_data_flip=args.data_flip,
+
+
                  )
 
     model.train_procedures()

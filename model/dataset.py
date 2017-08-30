@@ -13,6 +13,8 @@ from .utils import pad_seq, bytes_to_file, \
 
 class PickledImageProvider(object):
     def __init__(self, obj_path,train_mark=False):
+
+
         self.obj_path = obj_path
         self.examples,self.label_vec = self.load_pickled_examples(train_mark)
 
@@ -46,7 +48,7 @@ class PickledImageProvider(object):
             return examples,label_vec.tolist()
 
 
-def get_batch_iter(examples, batch_size, augment):
+def get_batch_iter(examples, batch_size, augment,training_data_rotate,training_data_flip):
     # the transpose ops requires deterministic
     # batch size, thus comes the padding
     padded = pad_seq(examples, batch_size)
@@ -71,15 +73,17 @@ def get_batch_iter(examples, batch_size, augment):
                 img_A = shift_and_resize_image(img_A, shift_x, shift_y, nw, nh)
                 img_B = shift_and_resize_image(img_B, shift_x, shift_y, nw, nh)
 
+                if training_data_rotate==1:
+                    rotate_times = np.random.randint(low=0, high=4)
+                    img_A = np.rot90(img_A, rotate_times, (0, 1))
+                    img_B = np.rot90(img_B, rotate_times, (0, 1))
 
-                rotate_times = np.random.randint(low=0, high=4)
-                img_A = np.rot90(img_A, rotate_times, (0, 1))
-                img_B = np.rot90(img_B, rotate_times, (0, 1))
 
-                flip_axis = np.random.randint(low=-1, high=2)
-                if not flip_axis==-1:
-                    img_A = np.flip(img_A, flip_axis)
-                    img_B = np.flip(img_B, flip_axis)
+                if training_data_flip==1:
+                    flip_axis = np.random.randint(low=-1, high=2)
+                    if not flip_axis==-1:
+                        img_A = np.flip(img_A, flip_axis)
+                        img_B = np.flip(img_B, flip_axis)
 
 
 
@@ -178,11 +182,13 @@ class TrainDataProvider(object):
 
 
 
-    def get_train_iter(self, batch_size, shuffle=True):
+    def get_train_iter(self, batch_size, shuffle=True,training_data_rotate=1,training_data_flip=1):
         training_examples = self.train.examples[:]
         if shuffle:
             np.random.shuffle(training_examples)
-        return get_batch_iter(training_examples, batch_size, augment=True)
+        return get_batch_iter(training_examples, batch_size, augment=True,
+                              training_data_rotate=training_data_rotate,
+                              training_data_flip=training_data_flip)
 
 
 
@@ -194,7 +200,7 @@ class TrainDataProvider(object):
         if shuffle:
             np.random.shuffle(val_examples)
         while True:
-            val_batch_iter = get_batch_iter(val_examples, batch_size, augment=False)
+            val_batch_iter = get_batch_iter(val_examples, batch_size, augment=False,training_data_rotate=0,training_data_flip=0)
             for labels, examples in val_batch_iter:
                 yield labels, examples
 
@@ -206,7 +212,7 @@ class TrainDataProvider(object):
         if shuffle:
             np.random.shuffle(infer_examples)
         while True:
-            infer_batch_iter = get_batch_iter(infer_examples, batch_size, augment=False)
+            infer_batch_iter = get_batch_iter(infer_examples, batch_size, augment=False,training_data_rotate=0,training_data_flip=0)
             # for labels, examples in infer_batch_iter:
             #     yield labels, examples
 

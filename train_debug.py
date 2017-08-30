@@ -7,13 +7,13 @@ from tensorflow.python.client import device_lib
 
 import argparse
 
-from model.unet import UNet
+from model.unet_new import UNet
 
 
 input_args = ['--training_mode','0',
-              '--base_trained_model_dir', '../Bases/experiment_debug_batch_7_mode_0',
+              '--base_trained_model_dir', './',
 
-              '--experiment_id','debug',
+              '--experiment_id','Debug',
 
               '--train_name','./train_debug.obj',
               '--val_name','./train_debug.obj',
@@ -23,10 +23,7 @@ input_args = ['--training_mode','0',
               '--batch_size', '7',
               '--resume_training','0',
 
-              '--sample_steps','1',
-              '--checkpoint_steps','1',
-              '--summary_steps','1',
-              '--itrs','1000',
+              '--samples_per_font','50000',
               '--schedule','5',
               '--optimization_method','adam',
 
@@ -40,10 +37,14 @@ input_args = ['--training_mode','0',
 
 
               '--device_mode','0',
+
+
+              '--data_rotate','0',
+              '--data_flip','0',
               ]
 # device_mode=0: training only on cpu
 # device_mode=1: forward & backward on multiple gpus && parameter update on cpu
-# device_mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
+# device_mode=2: forward & backward on multiple gpus && parameter update on one single gpu
 # device_mode=3: forward & backward & parameter update on a single gpu
 
 parser = argparse.ArgumentParser(description='Train')
@@ -82,7 +83,8 @@ parser.add_argument('--ebdd_dictionary_dim', dest='ebdd_dictionary_dim', type=in
 
 
 # training param setting
-parser.add_argument('--itrs', dest='itrs', type=int, required=True, help='number of itrs')
+parser.add_argument('--samples_per_font', dest='samples_per_font', type=int, required=True,
+                    help='how many samples shall be seen for a epoch')
 parser.add_argument('--batch_size', dest='batch_size', type=int, help='number of examples in batch',required=True)
 parser.add_argument('--lr', dest='lr', type=float, default=0.001, help='initial learning rate')
 parser.add_argument('--optimization_method',type=str,required=True,help='optimization method selection')
@@ -90,19 +92,6 @@ parser.add_argument('--schedule', dest='schedule', type=int, required=True, help
 parser.add_argument('--resume_training', dest='resume_training', type=int, help='resume from previous training',required=True)
 parser.add_argument('--base_trained_model_dir',dest='base_trained_model_dir',type=str,required=True,
                     help='resume data from what dir')
-
-
-# checking && backup setting
-parser.add_argument('--sample_steps', dest='sample_steps', type=int, required=True,
-                    help='number of batches in between two samples are drawn from validation set')
-parser.add_argument('--checkpoint_steps', dest='checkpoint_steps', type=int, required=True,
-                    help='number of batches in between two checkpoints')
-parser.add_argument('--summary_steps', dest='summary_steps', type=int, required=True,
-                    help='number of batches in between two summaries')
-
-
-
-
 
 
 # specific training scheme setting
@@ -118,15 +107,17 @@ parser.add_argument('--freeze_discriminator', dest='freeze_discriminator', type=
 parser.add_argument('--freeze_ebdd_weights', dest='freeze_ebdd_weights', type=int, default=-1,
                     help="freeze ebdd weights during training")
 
+# data argument setting
+parser.add_argument('--data_rotate', dest='data_rotate', type=int, required=True,
+                    help="rotate training data")
+parser.add_argument('--data_flip', dest='data_flip', type=int, required=True,
+                    help="flip training data")
 
 
 # device selection
 parser.add_argument('--device_mode', dest='device_mode',type=int,required=True,
                     help='Device mode selection')
-# mode=0: training only on cpu
-# mode=1: forward & backward on multiple gpus && parameter update on cpu
-# mode=2: forward & backward on multiple -1 gpus && parameter update on the other gpu
-# mode=3: forward & backward & parameter update on a single gpu
+
 
 
 def get_available_gpus():
@@ -181,10 +172,11 @@ def main(_):
                            experiment_dir=args.experiment_dir,experiment_id=args.experiment_id,
                            train_obj_name=args.train_name, val_obj_name=args.val_name,
 
-                           sample_steps=args.sample_steps, checkpoint_steps=args.checkpoint_steps,summary_steps=args.summary_steps,
                            optimization_method=args.optimization_method,
 
-                           batch_size=args.batch_size,lr=args.lr,itrs=args.itrs,schedule=args.schedule,
+                           batch_size=args.batch_size,lr=args.lr,
+                           samples_per_font=args.samples_per_font,
+                           schedule=args.schedule,
 
                            ebdd_dictionary_dim=args.ebdd_dictionary_dim,
 
@@ -201,7 +193,11 @@ def main(_):
                            sub_train_set_num=args.sub_train_set_num,
 
                            parameter_update_device=parameter_update_device,
-                           forward_backward_device=forward_backward_device_list)
+                           forward_backward_device=forward_backward_device_list,
+
+                           training_data_rotate=args.data_rotate,
+                           training_data_flip=args.data_flip
+                           )
 
     model_for_train.train_procedures()
 

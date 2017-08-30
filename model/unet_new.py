@@ -36,7 +36,8 @@ SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged",
                                              "check_validate_image_summary","check_train_image_summary",
                                              "check_validate_image","check_train_image",
                                              "ebdd_weights_house_bar","ebdd_weight_dynamic_checker_final",
-                                             "ebdd_weights_house_bar_placeholder"])
+                                             "ebdd_weights_house_bar_placeholder",
+                                             "learning_rate"])
 
 
 lossHandleList=[]
@@ -53,10 +54,11 @@ class UNet(object):
                  experiment_dir=None, experiment_id='0',
                  train_obj_name='train_debug.obj', val_obj_name='val_debug.obj',
 
-                 sample_steps=500, checkpoint_steps=500,summary_steps=10,
                  optimization_method='adam',
 
-                 batch_size=1,lr=0.001,itrs=2000,schedule=5,
+                 batch_size=1,lr=0.001,
+                 samples_per_font=2000,
+                 schedule=5,
 
                  input_width=256, output_width=256, input_filters=3, output_filters=3,
                  generator_dim=64, discriminator_dim=64,ebdd_dictionary_dim=128,
@@ -74,6 +76,9 @@ class UNet(object):
                  parameter_update_device='/cpu:0',
                  forward_backward_device='/cpu:0',
 
+                 training_data_rotate=1,
+                 training_data_flip=1,
+
 
 
 
@@ -86,7 +91,8 @@ class UNet(object):
                  ):
         self.training_mode = training_mode
         self.base_trained_model_dir = base_trained_model_dir
-        if not experiment_dir==None:
+        self.experiment_dir=experiment_dir
+        if not self.experiment_dir==None:
             self.experiment_dir = experiment_dir
             self.experiment_id = experiment_id
             self.data_dir = os.path.join(self.experiment_dir, "font_binary_data")
@@ -120,16 +126,13 @@ class UNet(object):
 
         self.train_obj_name=train_obj_name
         self.val_obj_name = val_obj_name
-        self.sample_steps = sample_steps
-        self.checkpoint_steps = checkpoint_steps
-        self.summary_steps=summary_steps
         self.optimization_method=optimization_method
 
 
         self.batch_size = batch_size
         self.lr=lr
-        self.itrs=itrs
         self.schedule=schedule
+        self.samples_per_font=samples_per_font
 
 
 
@@ -154,7 +157,8 @@ class UNet(object):
         self.resume_training = resume_training
 
 
-
+        self.training_data_rotate=training_data_rotate
+        self.training_data_flip=training_data_flip
 
 
 
@@ -196,22 +200,7 @@ class UNet(object):
         self.counter=0
         self.print_separater="####################################################################"
 
-        if not experiment_dir==None:
-            id, self.checkpoint_dir, self.log_dir, self.check_validate_dir, self.check_train_dir, self.weight_bar_dir = self.get_model_id_and_dir()
-            if self.resume_training == 0 and os.path.exists(self.log_dir):
-                shutil.rmtree(self.checkpoint_dir)
-                shutil.rmtree(self.log_dir)
-                shutil.rmtree(self.check_validate_dir)
-                shutil.rmtree(self.check_train_dir)
-                shutil.rmtree(self.weight_bar_dir)
-                print("new model ckpt / log / sample / weight bar directories removed for %s" % id)
-            if not os.path.exists(self.log_dir):
-                os.makedirs(self.checkpoint_dir)
-                os.makedirs(self.log_dir)
-                os.makedirs(self.check_validate_dir)
-                os.makedirs(self.check_train_dir)
-                os.makedirs(self.weight_bar_dir)
-                print("new model ckpt / log / sample / weight bar directories created for %s" % id)
+
 
 
 
@@ -619,7 +608,38 @@ class UNet(object):
         return input_handle, loss_handle, eval_handle, summary_handle
 
     def get_model_id_and_dir(self):
-        model_id = "experiment_%s_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.training_mode)
+        model_id = "Exp%s_Batch%d_Mode%d" % (self.experiment_id, self.batch_size,self.training_mode)
+        if self.freeze_encoder:
+            encoder_status="EncoderFreeze"
+        else:
+            encoder_status="EncoderNotFreeze"
+        if self.freeze_decoder:
+            decoder_status="Decoder_Freeze"
+        else:
+            decoder_status="DecoderNotFreeze"
+
+        font_num=("%dFonts"%len(self.involved_font_list))
+        if not self.sub_train_set_num==-1:
+            character_num_of_each_font=("%dEach"%self.sub_train_set_num)
+        else:
+            character_num_of_each_font = ("%dEach" % 3755)
+
+        if self.training_data_rotate:
+            rotate_status="WithRotate"
+        else:
+            rotate_status="WithOutRotate"
+
+        if self.training_data_flip:
+            flip_status="WithFlip"
+        else:
+            flip_status="WithOutFlip"
+
+        model_id = model_id + \
+                   "_" + encoder_status + "_" + decoder_status + \
+                   "_" + rotate_status + "_" + flip_status + \
+                   "_" + font_num + "_" + character_num_of_each_font
+
+
         model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
         model_log_dir = os.path.join(self.log_dir, model_id)
         model_check_validate_image_dir = os.path.join(self.check_validate_dir, model_id)
@@ -762,7 +782,7 @@ class UNet(object):
 
 
 
-    def summary_finalization(self,loss_list):
+    def summary_finalization(self,loss_list,learning_rate):
         ii=0
         ebdd_weight_org_hist_final=[]
         ebdd_weight_net_hist_final=[]
@@ -988,6 +1008,11 @@ class UNet(object):
                 g_merged_summary = tf.summary.merge([g_merged_summary,travelling_summary])
 
 
+
+
+        learning_rate_summary=tf.summary.scalar('Learning_Rate',learning_rate)
+
+
         summary_handle = SummaryHandle(d_merged=d_merged_summary,
                                        g_merged=g_merged_summary,
                                        check_validate_image_summary=check_validate_image_summary,
@@ -996,7 +1021,8 @@ class UNet(object):
                                        check_train_image=check_train_image,
                                        ebdd_weights_house_bar=ebdd_weights_house_bar_summary,
                                        ebdd_weight_dynamic_checker_final=ebdd_weight_dynamic_checker_final,
-                                       ebdd_weights_house_bar_placeholder=ebdd_weights_house_bar_placeholder)
+                                       ebdd_weights_house_bar_placeholder=ebdd_weights_house_bar_placeholder,
+                                       learning_rate=learning_rate_summary)
         setattr(self, "summary_handle", summary_handle)
 
 
@@ -1023,7 +1049,6 @@ class UNet(object):
 
 
         tower_loss_list=[]
-        #self.available_gpu_list = self.get_available_gpus()
         self.available_gpu_list = self.forward_backward_device
 
         with tf.Graph().as_default(), tf.device(self.parameter_update_device):
@@ -1038,11 +1063,22 @@ class UNet(object):
                 d_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
                 g_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
-            data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
-                                            sub_train_set_num=self.sub_train_set_num)
+            data_provider = TrainDataProvider(data_dir=self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
+                                              sub_train_set_num=self.sub_train_set_num)
+            self.involved_font_list = data_provider.train_label_vec
+            self.itrs=np.ceil(self.samples_per_font/(self.batch_size*len(self.available_gpu_list))*len(self.involved_font_list))
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
-            self.involved_font_list = data_provider.train_label_vec
+            print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d" % (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch))
+
+            #self.sample_steps = np.ceil(self.itrs/(2.5*len(self.involved_font_list)*len(self.available_gpu_list)))
+            self.sample_steps = 9000/(self.batch_size*len(self.available_gpu_list))
+            self.checkpoint_steps = self.sample_steps*2
+            self.summary_steps = np.ceil(10 / len(self.available_gpu_list))
+            print ("SampleStep:%d, CheckPointStep:%d, SummaryStep:%d" % (self.sample_steps,self.checkpoint_steps,self.summary_steps))
+
+
+
             if (self.training_mode == 0 or self.training_mode == 1) and (len(self.involved_font_list) != self.base_training_font_num):
                 print("Incorrect fonts number for mode %d training !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
                 print("TrainingFontNum:%d, BaseTrainingFontNum:%d" % (
@@ -1057,7 +1093,27 @@ class UNet(object):
                 print("Involved Font Labels:")
                 print(self.involved_font_list)
                 
-
+            if not self.experiment_dir == None:
+                id, \
+                self.checkpoint_dir, \
+                self.log_dir, \
+                self.check_validate_dir, \
+                self.check_train_dir, \
+                self.weight_bar_dir = self.get_model_id_and_dir()
+                if self.resume_training == 0 and os.path.exists(self.log_dir):
+                    shutil.rmtree(self.checkpoint_dir)
+                    shutil.rmtree(self.log_dir)
+                    shutil.rmtree(self.check_validate_dir)
+                    shutil.rmtree(self.check_train_dir)
+                    shutil.rmtree(self.weight_bar_dir)
+                    print("new model ckpt / log / sample / weight bar directories removed for %s" % id)
+                if not os.path.exists(self.log_dir):
+                    os.makedirs(self.checkpoint_dir)
+                    os.makedirs(self.log_dir)
+                    os.makedirs(self.check_validate_dir)
+                    os.makedirs(self.check_train_dir)
+                    os.makedirs(self.weight_bar_dir)
+                    print("new model ckpt / log / sample / weight bar directories created for %s" % id)
 
             total_batches = data_provider.compute_total_batch_num(self.batch_size,len(self.available_gpu_list))
             val_batch_iter = data_provider.get_val_iter(self.batch_size)
@@ -1147,7 +1203,7 @@ class UNet(object):
 
 
 
-            self.summary_finalization(tower_loss_list)
+            self.summary_finalization(tower_loss_list,learning_rate)
             print("Initialization completed, and training started right now.")
 
 
@@ -1183,14 +1239,23 @@ class UNet(object):
 
             summary_handle = getattr(self, "summary_handle")
             for ei in range(self.epoch):
-                train_batch_iter = data_provider.get_train_iter(self.batch_size * len(self.available_gpu_list))
+                train_batch_iter = data_provider.get_train_iter(batch_size=self.batch_size * len(self.available_gpu_list),
+                                                                training_data_rotate=self.training_data_rotate,
+                                                                training_data_flip=self.training_data_flip)
 
-                if (ei + 1) % self.schedule == 0:
-                    update_lr = current_lr / 2.0
-                    # minimum learning rate guarantee
+                # if (ei + 1) % self.schedule == 0:
+                #     update_lr = current_lr / 2.0
+                #     # minimum learning rate guarantee
+                #     update_lr = max(update_lr, 0.0002)
+                #     print("decay learning rate from %.5f to %.5f" % (current_lr, update_lr))
+                #     current_lr = update_lr
+
+                if not ei==0:
+                    update_lr = current_lr * 0.95
                     update_lr = max(update_lr, 0.0002)
-                    print("decay learning rate from %.5f to %.5f" % (current_lr, update_lr))
+                    print("decay learning rate from %.7f to %.7f" % (current_lr, update_lr))
                     current_lr = update_lr
+
 
                 for bid, batch in enumerate(train_batch_iter):
                     self.counter += 1
@@ -1234,6 +1299,8 @@ class UNet(object):
                                                      current_lr=current_lr,
                                                      learning_rate=learning_rate,
                                                      availalbe_device_num=len(self.available_gpu_list)))
+                    learning_rate_summary = self.sess.run(summary_handle.learning_rate,feed_dict={learning_rate:current_lr})
+
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     passed_full = time.time() - start_time
                     passed_itr = time.time() - this_itr_start
@@ -1242,6 +1309,7 @@ class UNet(object):
                         ei, self.epoch,
                         bid, total_batches,
                         passed_itr, passed_full / 3600))
+                    #current_lr=current_lr * 0.95
 
                     # percentage_completed = float(self.counter)/ float(self.epoch*total_batches)*100
                     percentage_completed = float(self.counter) / float(self.epoch * total_batches) * 100
@@ -1253,9 +1321,10 @@ class UNet(object):
                     # print("Checker for counter: counter:%d, ei*total_batches+bid:%d" %(self.counter-1,ei*total_batches+bid))
                     print(self.print_separater)
 
-                    if self.counter % self.summary_steps == 0:
+                    if self.counter % 1 == 0:
                         summary_writer.add_summary(d_summary, self.counter)
                         summary_writer.add_summary(g_summary, self.counter)
+                        summary_writer.add_summary(learning_rate_summary,self.counter)
                         summary_writer.flush()
 
                     if self.counter % self.sample_steps == 0:
