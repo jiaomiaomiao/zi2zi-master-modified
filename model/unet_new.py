@@ -220,7 +220,7 @@ class UNet(object):
                 encode_layers["enc%d" % layer] = enc
                 return enc
 
-            e1 = conv2d(images, self.generator_dim, scope="gen_enc1_conv")
+            e1 = conv2d(images, self.generator_dim, scope="gen_enc1_conv",parameter_update_device=self.parameter_update_device)
             encode_layers["enc1"] = e1
             e2 = encode_layer(e1, self.generator_dim * 2, 2)
             e3 = encode_layer(e2, self.generator_dim * 4, 3)
@@ -289,13 +289,20 @@ class UNet(object):
         with tf.variable_scope("discriminator"):
             if reuse:
                 tf.get_variable_scope().reuse_variables()
-            h0 = lrelu(conv2d(image, self.discriminator_dim, scope="dis_h0_conv"))
-            h1 = lrelu(batch_norm(conv2d(h0, self.discriminator_dim * 2, scope="dis_h1_conv"),
-                                  is_training, scope="dis_bn_1"))
-            h2 = lrelu(batch_norm(conv2d(h1, self.discriminator_dim * 4, scope="dis_h2_conv"),
-                                  is_training, scope="dis_bn_2"))
-            h3 = lrelu(batch_norm(conv2d(h2, self.discriminator_dim * 8, sh=1, sw=1, scope="dis_h3_conv"),
-                                  is_training, scope="dis_bn_3"))
+            h0 = lrelu(conv2d(image, self.discriminator_dim, scope="dis_h0_conv",
+                              parameter_update_device=self.parameter_update_device))
+            h1 = lrelu(batch_norm(conv2d(h0, self.discriminator_dim * 2, scope="dis_h1_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_1",
+                                  parameter_update_device=self.parameter_update_device))
+            h2 = lrelu(batch_norm(conv2d(h1, self.discriminator_dim * 4, scope="dis_h2_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_2",
+                                  parameter_update_device=self.parameter_update_device))
+            h3 = lrelu(batch_norm(conv2d(h2, self.discriminator_dim * 8, sh=1, sw=1, scope="dis_h3_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_3",
+                                  parameter_update_device=self.parameter_update_device))
             # real or fake binary loss
             fc1 = fc(tf.reshape(h3, [self.batch_size, -1]), 1, scope="dis_fc1",
                      parameter_update_device=self.parameter_update_device)
@@ -1072,8 +1079,8 @@ class UNet(object):
             print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d" % (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch))
 
             #self.sample_steps = np.ceil(self.itrs/(2.5*len(self.involved_font_list)*len(self.available_gpu_list)))
-            self.sample_steps = 9000/(self.batch_size*len(self.available_gpu_list))
-            self.checkpoint_steps = self.sample_steps*2
+            self.sample_steps = 3000/(self.batch_size*len(self.available_gpu_list))
+            self.checkpoint_steps = self.sample_steps*10
             self.summary_steps = np.ceil(10 / len(self.available_gpu_list))
             print ("SampleStep:%d, CheckPointStep:%d, SummaryStep:%d" % (self.sample_steps,self.checkpoint_steps,self.summary_steps))
 

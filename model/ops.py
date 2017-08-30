@@ -8,7 +8,7 @@ import tensorflow as tf
 
 
 def batch_norm(x, is_training, epsilon=1e-5, decay=0.9, scope="batch_norm",
-               parameter_update_device='/cpu:0'):
+               parameter_update_device='-1'):
     with tf.device(parameter_update_device):
         var = tf.contrib.layers.batch_norm(x, decay=decay, updates_collections=None, epsilon=epsilon,
                                         scale=True, is_training=is_training, scope=scope)
@@ -17,7 +17,7 @@ def batch_norm(x, is_training, epsilon=1e-5, decay=0.9, scope="batch_norm",
 
 
 def conv2d(x, output_filters, kh=5, kw=5, sh=2, sw=2, stddev=0.02, scope="conv2d",
-           parameter_update_device='/cpu:0'):
+           parameter_update_device='-1'):
     with tf.variable_scope(scope):
         shape = x.get_shape().as_list()
 
@@ -42,7 +42,7 @@ def conv2d(x, output_filters, kh=5, kw=5, sh=2, sw=2, stddev=0.02, scope="conv2d
 
 
 def deconv2d(x, output_shape, kh=5, kw=5, sh=2, sw=2, stddev=0.02, scope="deconv2d",
-             parameter_update_device='/cpu:0'):
+             parameter_update_device='-1'):
     with tf.variable_scope(scope):
         # filter : [height, width, output_channels, in_channels]
         input_shape = x.get_shape().as_list()
@@ -69,7 +69,7 @@ def lrelu(x, leak=0.2):
 
 
 def fc(x, output_size, stddev=0.02, scope="fc",
-       parameter_update_device='/cpu:0'):
+       parameter_update_device='-1'):
     with tf.variable_scope(scope):
         shape = x.get_shape().as_list()
         # W = tf.get_variable("W", [shape[1], output_size], tf.float32,
@@ -87,7 +87,7 @@ def fc(x, output_size, stddev=0.02, scope="fc",
 
 
 def init_embedding_dictionary(size, dimension, stddev=0.01, scope="generator",
-                              parameter_update_device='/cpu:0'):
+                              parameter_update_device='-1'):
     with tf.variable_scope(scope):
         # return tf.get_variable("gen_ebdd_dictionary", [size, dimension], tf.float32,
         #                        tf.random_normal_initializer(stddev=stddev))
@@ -98,7 +98,7 @@ def init_embedding_dictionary(size, dimension, stddev=0.01, scope="generator",
 
 
 def init_embedding_weights(size, stddev=1, scope="generator", name='tmp',
-                           parameter_update_device='/cpu:0'):
+                           parameter_update_device='-1'):
     with tf.variable_scope(scope):
         # init_weight = tf.get_variable(name, size, tf.float32,
         #                               tf.random_normal_initializer(stddev=stddev))
@@ -140,7 +140,7 @@ def conditional_instance_norm(x, ids, labels_num, mixed=False, scope="conditiona
 
 
 def parameter_variable_creation_with_device_selection(name, shape, initializer,
-                                                      parameter_update_device='/cpu:0'):
+                                                      parameter_update_device='-1'):
     """Helper to create a Variable stored on CPU memory.
     Args:
       name: name of the variable
