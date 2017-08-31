@@ -1323,12 +1323,12 @@ class UNet(object):
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     passed_full = time.time() - start_time
                     passed_itr = time.time() - this_itr_start
-                    print("Time:%s, Epoch:%d/%d, Itr:%d/%d, ItrDuration:%.2fss, FullDuration:%.2fhrs;" % (
+                    print("Time:%s, Epoch:%d/%d, Itr:%d/%d, ItrDuration:%.2fss, FullDuration:%.2fhrs(%.1fdays);" % (
                         current_time,
                         ei, self.epoch,
                         bid, total_batches,
-                        passed_itr, passed_full / 3600))
-                    #current_lr=current_lr * 0.95
+                        passed_itr, passed_full / 3600,
+                        passed_full / 3600 / 24))
 
                     # percentage_completed = float(self.counter)/ float(self.epoch*total_batches)*100
                     percentage_completed = float(self.counter) / float(self.epoch * total_batches) * 100

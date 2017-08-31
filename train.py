@@ -39,7 +39,7 @@ input_args = ['--training_mode','0',
 	          '--ebdd_dictionary_dim','256',
 
 
-              '--device_mode','2',
+              '--device_mode','3',
 
               '--data_rotate','0',
               '--data_flip','0',
