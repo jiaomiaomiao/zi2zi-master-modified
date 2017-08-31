@@ -15,7 +15,7 @@ from model.unet_new import UNet
 input_args = ['--training_mode','0',
               '--base_trained_model_dir', './',
 
-              '--experiment_id','20170830',
+              '--experiment_id','20170831',
 
               '--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/train.obj',
               '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/val.obj',
@@ -23,10 +23,10 @@ input_args = ['--training_mode','0',
 #'--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_simplified.obj',
 #              '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/essay_traditional.obj',
 
-              '--batch_size', '70',
+              '--batch_size', '64',
               '--resume_training','0',
 
-              '--samples_per_font','50000',
+              '--samples_per_font','120000',
               '--schedule','5',
               '--optimization_method','adam',
 
@@ -39,7 +39,7 @@ input_args = ['--training_mode','0',
 	          '--ebdd_dictionary_dim','256',
 
 
-              '--device_mode','3',
+              '--device_mode','2',
 
               '--data_rotate','0',
               '--data_flip','0',

@@ -17,6 +17,8 @@ from .dataset import TrainDataProvider, InjectDataProvider
 from .utils import scale_back, merge, save_concat_images
 from PIL import Image
 import PIL.ImageOps
+import random
+
 
 import matplotlib.pyplot as plt
 import matplotlib.image as img
@@ -1071,19 +1073,21 @@ class UNet(object):
                 g_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
             data_provider = TrainDataProvider(data_dir=self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
-                                              sub_train_set_num=self.sub_train_set_num)
+                                              sub_train_set_num=self.sub_train_set_num,
+                                              training_mode=self.training_mode)
             self.involved_font_list = data_provider.train_label_vec
             self.itrs=np.ceil(self.samples_per_font/(self.batch_size*len(self.available_gpu_list))*len(self.involved_font_list))
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
             learning_rate_decay_rate = np.power(1.0/100.0,1.0/(self.epoch-1))
+            learning_rate_decay_rate = 0.9
             print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d, LearningRateDecay:%.10f Per Epoch" %
                   (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch,learning_rate_decay_rate))
 
             #self.sample_steps = np.ceil(self.itrs/(2.5*len(self.involved_font_list)*len(self.available_gpu_list)))
             self.sample_steps = 9000/(self.batch_size*len(self.available_gpu_list))
             self.checkpoint_steps = self.sample_steps*10
-            self.summary_steps = np.ceil(10 / len(self.available_gpu_list))
+            self.summary_steps = np.ceil(50 / len(self.available_gpu_list))
             print ("SampleStep:%d, CheckPointStep:%d, SummaryStep:%d" % (self.sample_steps,self.checkpoint_steps,self.summary_steps))
 
 
@@ -1271,6 +1275,12 @@ class UNet(object):
 
                     this_itr_start = time.time()
                     labels, batch_images = batch
+                    batch_images,labels=\
+                        self.check_train_data_validation(batch_images_input=batch_images,batch_labels_input=labels)
+
+
+
+
                     labels = self.dense_to_one_hot(input_label=labels, label_length=len(self.involved_font_list),multi_gpu_mark=True)
 
                     # Optimize D
@@ -1404,6 +1414,44 @@ class UNet(object):
                 print("Current Epoch Training Completed, and file saved.")
                 self.checkpoint(saver)
                 print(self.print_separater)
+
+    def check_train_data_validation(self,batch_images_input,batch_labels_input):
+        valid_list=list()
+        batch_images_output=batch_images_input
+        batch_labels_output=batch_labels_input
+        for ii in range(self.batch_size*len(self.available_gpu_list)):
+            current_image=batch_images_input[ii,:,:,:]
+            imgA = current_image[:, :, 0:3]
+            imgB = current_image[:, :, 3:]
+
+            valid_A = ((np.max(imgA) != np.min(imgA)))
+            valid_B = ((np.max(imgB) != np.min(imgB)))
+            valid_AB =  valid_A and valid_B
+
+            valid_list.append(valid_AB)
+
+        # valid_list[2]=False
+        # valid_list[4]=False
+
+        invalid_exist = False in valid_list
+        if invalid_exist:
+            invalid_indices=[i for i, a in enumerate(valid_list) if a==False]
+            valid_indices=[i for i, a in enumerate(valid_list) if a==True]
+            status_str=("Invalid Training Data Found with Num:%d" % len(invalid_indices))
+            print(status_str)
+
+            for ii in range(len(invalid_indices)):
+                this_invalid_index=invalid_indices[ii]
+                selected_valid_index=random.sample(valid_indices, 1)[0]
+                batch_images_output[this_invalid_index,:,:,:]=batch_images_output[selected_valid_index,:,:,:]
+                batch_labels_output[this_invalid_index]=batch_labels_output[selected_valid_index]
+
+
+
+        return batch_images_output,batch_labels_output
+
+
+
 
 
     def infer_procedures(self,inferred_result_saving_path='./',

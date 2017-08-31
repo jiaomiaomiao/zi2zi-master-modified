@@ -53,10 +53,22 @@ def get_batch_iter(examples, batch_size, augment,training_data_rotate,training_d
     # batch size, thus comes the padding
     padded = pad_seq(examples, batch_size)
 
+    def check_img_validation(img):
+        img = bytes_to_file(img)
+        img_A, img_B = read_split_image(img)
+        valid_A=(np.max(img_A)!=np.min(img_A))
+        valid_B=(np.max(img_B)!=np.min(img_B))
+        valid_A_and_B = valid_A and valid_B
+
+
     def process(img):
         img = bytes_to_file(img)
         try:
             img_A, img_B = read_split_image(img)
+            # valid_A=(np.max(img_A)!=np.min(img_A))
+            # valid_B=(np.max(img_B)!=np.min(img_B))
+            # valid_A_and_B = valid_A and valid_B
+
             if augment:
                 # augment the image by:
                 # 1) enlarge the image
@@ -101,7 +113,7 @@ def get_batch_iter(examples, batch_size, augment,training_data_rotate,training_d
             labels = [e[0] for e in batch]
             processed = [process(e[1]) for e in batch]
             # stack into tensor
-            yield labels, np.array(processed).astype(np.float32)
+            yield labels,np.array(processed).astype(np.float32)
 
     return batch_iter()
 
@@ -111,7 +123,8 @@ class TrainDataProvider(object):
                  data_dir='./',
                  train_name="train.obj", val_name="val.obj", infer_name="infer.obj",
                  sub_train_set_num=-1,
-                 infer_mark=False):
+                 infer_mark=False,
+                 training_mode=-1):
         self.data_dir = data_dir
         if not infer_mark:
 
@@ -144,6 +157,9 @@ class TrainDataProvider(object):
                 self.train.examples = list()
                 self.train.examples = new_train_examples
                 self.val.examples.extend(new_val_examples)
+
+            if training_mode==0:
+                self.train.examples.extend(self.val.examples)
 
             print("in total train examples -> %d, val examples -> %d" % (
             len(self.train.examples), len(self.val.examples)))
