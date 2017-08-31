@@ -868,13 +868,13 @@ class UNet(object):
 
         # multiple summaries
         ebdd_weight_org_hist_final = tf.divide(tf.add_n(ebdd_weight_org_hist_final),
-                                               tf.ones(shape=ebdd_weight_org_hist_final[0].shape),
+                                               len(self.available_gpu_list)*tf.ones(shape=ebdd_weight_org_hist_final[0].shape),
                                                name='ebdd_weight_org_hist_final')
         ebdd_weight_net_hist_final = tf.divide(tf.add_n(ebdd_weight_net_hist_final),
-                                               tf.ones(shape=ebdd_weight_net_hist_final[0].shape),
+                                               len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_net_hist_final[0].shape),
                                                name='ebdd_weight_net_hist_final')
         ebdd_weight_loss_hist_final = tf.divide(tf.add_n(ebdd_weight_loss_hist_final),
-                                                tf.ones(shape=ebdd_weight_loss_hist_final[0].shape),
+                                                len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_loss_hist_final[0].shape),
                                                 name='ebdd_weight_loss_hist_final')
         ebdd_weights_hist_org_summary = tf.summary.histogram("ebdd_weight_org_hist", ebdd_weight_org_hist_final)
         ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist", ebdd_weight_net_hist_final)
@@ -886,16 +886,16 @@ class UNet(object):
 
 
         const_loss_final = tf.divide(tf.add_n(const_loss_final),
-                                     tf.ones(shape=const_loss_final[0].shape),
+                                     len(self.available_gpu_list) *tf.ones(shape=const_loss_final[0].shape),
                                      name='const_loss_final')
         l1_loss_final = tf.divide(tf.add_n(l1_loss_final),
-                                  tf.ones(shape=l1_loss_final[0].shape),
+                                  len(self.available_gpu_list) *tf.ones(shape=l1_loss_final[0].shape),
                                   name='l1_loss_final')
         cheat_loss_final = tf.divide(tf.add_n(cheat_loss_final),
-                                     tf.ones(shape=cheat_loss_final[0].shape),
+                                     len(self.available_gpu_list) *tf.ones(shape=cheat_loss_final[0].shape),
                                      name='cheat_loss_final')
         g_loss_final = tf.divide(tf.add_n(g_loss_final),
-                                 tf.ones(shape=g_loss_final[0].shape),
+                                 len(self.available_gpu_list) *tf.ones(shape=g_loss_final[0].shape),
                                  name='g_loss_final')
         const_loss_summary = tf.summary.scalar("const_loss", const_loss_final)
         l1_loss_summary = tf.summary.scalar("l1_loss", l1_loss_final)
@@ -906,22 +906,22 @@ class UNet(object):
 
 
         real_category_loss_final = tf.divide(tf.add_n(real_category_loss_final),
-                                             tf.ones(shape=real_category_loss_final[0].shape),
+                                             len(self.available_gpu_list) *tf.ones(shape=real_category_loss_final[0].shape),
                                              name='real_category_loss_final')
         fake_category_loss_final = tf.divide(tf.add_n(fake_category_loss_final),
-                                             tf.ones(shape=fake_category_loss_final[0].shape),
+                                             len(self.available_gpu_list) *tf.ones(shape=fake_category_loss_final[0].shape),
                                              name='fake_category_loss_final')
         category_loss_final = tf.divide(tf.add_n(category_loss_final),
-                                        tf.ones(shape=category_loss_final[0].shape),
+                                        len(self.available_gpu_list) *tf.ones(shape=category_loss_final[0].shape),
                                         name='category_loss_final')
         d_loss_real_final = tf.divide(tf.add_n(d_loss_real_final),
-                                      tf.ones(shape=d_loss_real_final[0].shape),
+                                      len(self.available_gpu_list) *tf.ones(shape=d_loss_real_final[0].shape),
                                       name='d_loss_real_final')
         d_loss_fake_final = tf.divide(tf.add_n(d_loss_fake_final),
-                                      tf.ones(shape=d_loss_fake_final[0].shape),
+                                      len(self.available_gpu_list) *tf.ones(shape=d_loss_fake_final[0].shape),
                                       name='d_loss_fake_final')
         d_loss_final = tf.divide(tf.add_n(d_loss_final),
-                                 tf.ones(shape=d_loss_final[0].shape),
+                                 len(self.available_gpu_list) *tf.ones(shape=d_loss_final[0].shape),
                                  name='d_loss_final')
         real_category_loss_summary = tf.summary.scalar("category_real_loss", real_category_loss_final)
         fake_category_loss_summary = tf.summary.scalar("category_fake_loss", fake_category_loss_final)
@@ -931,10 +931,10 @@ class UNet(object):
         d_loss_summary = tf.summary.scalar("d_loss", d_loss_final)
 
         ebdd_wight_loss_final = tf.divide(tf.add_n(ebdd_wight_loss_final),
-                                             tf.ones(shape=ebdd_wight_loss_final[0].shape),
+                                          len(self.available_gpu_list) *tf.ones(shape=ebdd_wight_loss_final[0].shape),
                                              name='ebdd_wight_loss_final')
         ebdd_weight_dynamic_difference_from_one_final = tf.divide(tf.add_n(ebdd_weight_dynamic_difference_from_one_final),
-                                                                  tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
+                                                                  len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
                                                                   name='ebdd_weight_dynamic_difference_from_one_final')
         ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_wight_loss_final)
         ebdd_weight_dynamic_difference_from_one_summary = tf.summary.scalar("ebdd_weight_dynamic_difference_from_one", ebdd_weight_dynamic_difference_from_one_final)
@@ -946,13 +946,13 @@ class UNet(object):
         #############################################################################
         if self.training_mode==1:
             ebdd_label_diff_org_batch_final=tf.divide(tf.add_n(ebdd_label_diff_org_batch_final),
-                                                      tf.ones(shape=ebdd_label_diff_org_batch_final[0].shape),
+                                                      len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_org_batch_final[0].shape),
                                                       name='ebdd_label_diff_org_batch_final')
             ebdd_label_diff_net_batch_final = tf.divide(tf.add_n(ebdd_label_diff_net_batch_final),
-                                                        tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
+                                                        len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
                                                         name='ebdd_label_diff_net_batch_final')
             ebdd_label_diff_loss_batch_final = tf.divide(tf.add_n(ebdd_label_diff_loss_batch_final),
-                                                         tf.ones(shape=ebdd_label_diff_loss_batch_final[0].shape),
+                                                         len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_loss_batch_final[0].shape),
                                                          name='ebdd_label_diff_loss_batch_final')
             ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org_batch",
                                                             ebdd_label_diff_org_batch_final)
@@ -964,7 +964,7 @@ class UNet(object):
 
             ebdd_weight_checker_summary=list()
             ebdd_weight_checker_final = tf.divide(tf.add_n(ebdd_weight_checker_final),
-                                                  tf.ones(shape=ebdd_weight_checker_final[0].shape),
+                                                  len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_checker_final[0].shape),
                                                   name='ebdd_weight_checker_final')
             for ii in range(int(ebdd_weight_checker_final.shape[0])):
                 checker_name=("ebdd_weight_checker@Label:%d" % ii)
@@ -976,7 +976,7 @@ class UNet(object):
                 #                                       name='ebdd_weight_checker_final')
 
         ebdd_weight_dynamic_checker_final = tf.divide(tf.add_n(ebdd_weight_dynamic_checker_final),
-                                                      tf.ones(shape=ebdd_weight_dynamic_checker_final[0].get_shape()),
+                                                      len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_dynamic_checker_final[0].get_shape()),
                                                       name='ebdd_weight_dynamic_checker_final')
 
 
