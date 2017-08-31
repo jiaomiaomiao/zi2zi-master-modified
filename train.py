@@ -9,7 +9,7 @@ import numpy as np
 
 # from model.unet import UNet
 #from model.unet import UNet
-from model.unet_new import UNet
+from model.unet import UNet
 
 
 input_args = ['--training_mode','0',

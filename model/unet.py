@@ -17,6 +17,8 @@ from .dataset import TrainDataProvider, InjectDataProvider
 from .utils import scale_back, merge, save_concat_images
 from PIL import Image
 import PIL.ImageOps
+import random
+
 
 import matplotlib.pyplot as plt
 import matplotlib.image as img
@@ -36,7 +38,8 @@ SummaryHandle = namedtuple("SummaryHandle", ["d_merged", "g_merged",
                                              "check_validate_image_summary","check_train_image_summary",
                                              "check_validate_image","check_train_image",
                                              "ebdd_weights_house_bar","ebdd_weight_dynamic_checker_final",
-                                             "ebdd_weights_house_bar_placeholder"])
+                                             "ebdd_weights_house_bar_placeholder",
+                                             "learning_rate"])
 
 
 lossHandleList=[]
@@ -53,10 +56,11 @@ class UNet(object):
                  experiment_dir=None, experiment_id='0',
                  train_obj_name='train_debug.obj', val_obj_name='val_debug.obj',
 
-                 sample_steps=500, checkpoint_steps=500,summary_steps=10,
                  optimization_method='adam',
 
-                 batch_size=1,lr=0.001,itrs=2000,schedule=5,
+                 batch_size=1,lr=0.001,
+                 samples_per_font=2000,
+                 schedule=5,
 
                  input_width=256, output_width=256, input_filters=3, output_filters=3,
                  generator_dim=64, discriminator_dim=64,ebdd_dictionary_dim=128,
@@ -74,6 +78,9 @@ class UNet(object):
                  parameter_update_device='/cpu:0',
                  forward_backward_device='/cpu:0',
 
+                 training_data_rotate=1,
+                 training_data_flip=1,
+
 
 
 
@@ -86,7 +93,8 @@ class UNet(object):
                  ):
         self.training_mode = training_mode
         self.base_trained_model_dir = base_trained_model_dir
-        if not experiment_dir==None:
+        self.experiment_dir=experiment_dir
+        if not self.experiment_dir==None:
             self.experiment_dir = experiment_dir
             self.experiment_id = experiment_id
             self.data_dir = os.path.join(self.experiment_dir, "font_binary_data")
@@ -120,16 +128,13 @@ class UNet(object):
 
         self.train_obj_name=train_obj_name
         self.val_obj_name = val_obj_name
-        self.sample_steps = sample_steps
-        self.checkpoint_steps = checkpoint_steps
-        self.summary_steps=summary_steps
         self.optimization_method=optimization_method
 
 
         self.batch_size = batch_size
         self.lr=lr
-        self.itrs=itrs
         self.schedule=schedule
+        self.samples_per_font=samples_per_font
 
 
 
@@ -154,7 +159,8 @@ class UNet(object):
         self.resume_training = resume_training
 
 
-
+        self.training_data_rotate=training_data_rotate
+        self.training_data_flip=training_data_flip
 
 
 
@@ -196,22 +202,7 @@ class UNet(object):
         self.counter=0
         self.print_separater="####################################################################"
 
-        if not experiment_dir==None:
-            id, self.checkpoint_dir, self.log_dir, self.check_validate_dir, self.check_train_dir, self.weight_bar_dir = self.get_model_id_and_dir()
-            if self.resume_training == 0 and os.path.exists(self.log_dir):
-                shutil.rmtree(self.checkpoint_dir)
-                shutil.rmtree(self.log_dir)
-                shutil.rmtree(self.check_validate_dir)
-                shutil.rmtree(self.check_train_dir)
-                shutil.rmtree(self.weight_bar_dir)
-                print("new model ckpt / log / sample / weight bar directories removed for %s" % id)
-            if not os.path.exists(self.log_dir):
-                os.makedirs(self.checkpoint_dir)
-                os.makedirs(self.log_dir)
-                os.makedirs(self.check_validate_dir)
-                os.makedirs(self.check_train_dir)
-                os.makedirs(self.weight_bar_dir)
-                print("new model ckpt / log / sample / weight bar directories created for %s" % id)
+
 
 
 
@@ -231,7 +222,7 @@ class UNet(object):
                 encode_layers["enc%d" % layer] = enc
                 return enc
 
-            e1 = conv2d(images, self.generator_dim, scope="gen_enc1_conv")
+            e1 = conv2d(images, self.generator_dim, scope="gen_enc1_conv",parameter_update_device=self.parameter_update_device)
             encode_layers["enc1"] = e1
             e2 = encode_layer(e1, self.generator_dim * 2, 2)
             e3 = encode_layer(e2, self.generator_dim * 4, 3)
@@ -300,13 +291,20 @@ class UNet(object):
         with tf.variable_scope("discriminator"):
             if reuse:
                 tf.get_variable_scope().reuse_variables()
-            h0 = lrelu(conv2d(image, self.discriminator_dim, scope="dis_h0_conv"))
-            h1 = lrelu(batch_norm(conv2d(h0, self.discriminator_dim * 2, scope="dis_h1_conv"),
-                                  is_training, scope="dis_bn_1"))
-            h2 = lrelu(batch_norm(conv2d(h1, self.discriminator_dim * 4, scope="dis_h2_conv"),
-                                  is_training, scope="dis_bn_2"))
-            h3 = lrelu(batch_norm(conv2d(h2, self.discriminator_dim * 8, sh=1, sw=1, scope="dis_h3_conv"),
-                                  is_training, scope="dis_bn_3"))
+            h0 = lrelu(conv2d(image, self.discriminator_dim, scope="dis_h0_conv",
+                              parameter_update_device=self.parameter_update_device))
+            h1 = lrelu(batch_norm(conv2d(h0, self.discriminator_dim * 2, scope="dis_h1_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_1",
+                                  parameter_update_device=self.parameter_update_device))
+            h2 = lrelu(batch_norm(conv2d(h1, self.discriminator_dim * 4, scope="dis_h2_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_2",
+                                  parameter_update_device=self.parameter_update_device))
+            h3 = lrelu(batch_norm(conv2d(h2, self.discriminator_dim * 8, sh=1, sw=1, scope="dis_h3_conv",
+                                         parameter_update_device=self.parameter_update_device),
+                                  is_training, scope="dis_bn_3",
+                                  parameter_update_device=self.parameter_update_device))
             # real or fake binary loss
             fc1 = fc(tf.reshape(h3, [self.batch_size, -1]), 1, scope="dis_fc1",
                      parameter_update_device=self.parameter_update_device)
@@ -619,7 +617,38 @@ class UNet(object):
         return input_handle, loss_handle, eval_handle, summary_handle
 
     def get_model_id_and_dir(self):
-        model_id = "experiment_%s_batch_%d_mode_%d" % (self.experiment_id, self.batch_size,self.training_mode)
+        model_id = "Exp%s_Batch%d_Mode%d" % (self.experiment_id, self.batch_size,self.training_mode)
+        if self.freeze_encoder:
+            encoder_status="EncoderFreeze"
+        else:
+            encoder_status="EncoderNotFreeze"
+        if self.freeze_decoder:
+            decoder_status="Decoder_Freeze"
+        else:
+            decoder_status="DecoderNotFreeze"
+
+        font_num=("%dFonts"%len(self.involved_font_list))
+        if not self.sub_train_set_num==-1:
+            character_num_of_each_font=("%dEach"%self.sub_train_set_num)
+        else:
+            character_num_of_each_font = ("%dEach" % 3755)
+
+        if self.training_data_rotate:
+            rotate_status="WithRotate"
+        else:
+            rotate_status="WithOutRotate"
+
+        if self.training_data_flip:
+            flip_status="WithFlip"
+        else:
+            flip_status="WithOutFlip"
+
+        model_id = model_id + \
+                   "_" + encoder_status + "_" + decoder_status + \
+                   "_" + rotate_status + "_" + flip_status + \
+                   "_" + font_num + "_" + character_num_of_each_font
+
+
         model_ckpt_dir = os.path.join(self.checkpoint_dir, model_id)
         model_log_dir = os.path.join(self.log_dir, model_id)
         model_check_validate_image_dir = os.path.join(self.check_validate_dir, model_id)
@@ -762,7 +791,7 @@ class UNet(object):
 
 
 
-    def summary_finalization(self,loss_list):
+    def summary_finalization(self,loss_list,learning_rate):
         ii=0
         ebdd_weight_org_hist_final=[]
         ebdd_weight_net_hist_final=[]
@@ -839,13 +868,13 @@ class UNet(object):
 
         # multiple summaries
         ebdd_weight_org_hist_final = tf.divide(tf.add_n(ebdd_weight_org_hist_final),
-                                               tf.ones(shape=ebdd_weight_org_hist_final[0].shape),
+                                               len(self.available_gpu_list)*tf.ones(shape=ebdd_weight_org_hist_final[0].shape),
                                                name='ebdd_weight_org_hist_final')
         ebdd_weight_net_hist_final = tf.divide(tf.add_n(ebdd_weight_net_hist_final),
-                                               tf.ones(shape=ebdd_weight_net_hist_final[0].shape),
+                                               len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_net_hist_final[0].shape),
                                                name='ebdd_weight_net_hist_final')
         ebdd_weight_loss_hist_final = tf.divide(tf.add_n(ebdd_weight_loss_hist_final),
-                                                tf.ones(shape=ebdd_weight_loss_hist_final[0].shape),
+                                                len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_loss_hist_final[0].shape),
                                                 name='ebdd_weight_loss_hist_final')
         ebdd_weights_hist_org_summary = tf.summary.histogram("ebdd_weight_org_hist", ebdd_weight_org_hist_final)
         ebdd_weights_hist_net_summary = tf.summary.histogram("ebdd_weight_net_hist", ebdd_weight_net_hist_final)
@@ -857,16 +886,16 @@ class UNet(object):
 
 
         const_loss_final = tf.divide(tf.add_n(const_loss_final),
-                                     tf.ones(shape=const_loss_final[0].shape),
+                                     len(self.available_gpu_list) *tf.ones(shape=const_loss_final[0].shape),
                                      name='const_loss_final')
         l1_loss_final = tf.divide(tf.add_n(l1_loss_final),
-                                  tf.ones(shape=l1_loss_final[0].shape),
+                                  len(self.available_gpu_list) *tf.ones(shape=l1_loss_final[0].shape),
                                   name='l1_loss_final')
         cheat_loss_final = tf.divide(tf.add_n(cheat_loss_final),
-                                     tf.ones(shape=cheat_loss_final[0].shape),
+                                     len(self.available_gpu_list) *tf.ones(shape=cheat_loss_final[0].shape),
                                      name='cheat_loss_final')
         g_loss_final = tf.divide(tf.add_n(g_loss_final),
-                                 tf.ones(shape=g_loss_final[0].shape),
+                                 len(self.available_gpu_list) *tf.ones(shape=g_loss_final[0].shape),
                                  name='g_loss_final')
         const_loss_summary = tf.summary.scalar("const_loss", const_loss_final)
         l1_loss_summary = tf.summary.scalar("l1_loss", l1_loss_final)
@@ -877,22 +906,22 @@ class UNet(object):
 
 
         real_category_loss_final = tf.divide(tf.add_n(real_category_loss_final),
-                                             tf.ones(shape=real_category_loss_final[0].shape),
+                                             len(self.available_gpu_list) *tf.ones(shape=real_category_loss_final[0].shape),
                                              name='real_category_loss_final')
         fake_category_loss_final = tf.divide(tf.add_n(fake_category_loss_final),
-                                             tf.ones(shape=fake_category_loss_final[0].shape),
+                                             len(self.available_gpu_list) *tf.ones(shape=fake_category_loss_final[0].shape),
                                              name='fake_category_loss_final')
         category_loss_final = tf.divide(tf.add_n(category_loss_final),
-                                        tf.ones(shape=category_loss_final[0].shape),
+                                        len(self.available_gpu_list) *tf.ones(shape=category_loss_final[0].shape),
                                         name='category_loss_final')
         d_loss_real_final = tf.divide(tf.add_n(d_loss_real_final),
-                                      tf.ones(shape=d_loss_real_final[0].shape),
+                                      len(self.available_gpu_list) *tf.ones(shape=d_loss_real_final[0].shape),
                                       name='d_loss_real_final')
         d_loss_fake_final = tf.divide(tf.add_n(d_loss_fake_final),
-                                      tf.ones(shape=d_loss_fake_final[0].shape),
+                                      len(self.available_gpu_list) *tf.ones(shape=d_loss_fake_final[0].shape),
                                       name='d_loss_fake_final')
         d_loss_final = tf.divide(tf.add_n(d_loss_final),
-                                 tf.ones(shape=d_loss_final[0].shape),
+                                 len(self.available_gpu_list) *tf.ones(shape=d_loss_final[0].shape),
                                  name='d_loss_final')
         real_category_loss_summary = tf.summary.scalar("category_real_loss", real_category_loss_final)
         fake_category_loss_summary = tf.summary.scalar("category_fake_loss", fake_category_loss_final)
@@ -902,10 +931,10 @@ class UNet(object):
         d_loss_summary = tf.summary.scalar("d_loss", d_loss_final)
 
         ebdd_wight_loss_final = tf.divide(tf.add_n(ebdd_wight_loss_final),
-                                             tf.ones(shape=ebdd_wight_loss_final[0].shape),
+                                          len(self.available_gpu_list) *tf.ones(shape=ebdd_wight_loss_final[0].shape),
                                              name='ebdd_wight_loss_final')
         ebdd_weight_dynamic_difference_from_one_final = tf.divide(tf.add_n(ebdd_weight_dynamic_difference_from_one_final),
-                                                                  tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
+                                                                  len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
                                                                   name='ebdd_weight_dynamic_difference_from_one_final')
         ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_wight_loss_final)
         ebdd_weight_dynamic_difference_from_one_summary = tf.summary.scalar("ebdd_weight_dynamic_difference_from_one", ebdd_weight_dynamic_difference_from_one_final)
@@ -917,13 +946,13 @@ class UNet(object):
         #############################################################################
         if self.training_mode==1:
             ebdd_label_diff_org_batch_final=tf.divide(tf.add_n(ebdd_label_diff_org_batch_final),
-                                                      tf.ones(shape=ebdd_label_diff_org_batch_final[0].shape),
+                                                      len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_org_batch_final[0].shape),
                                                       name='ebdd_label_diff_org_batch_final')
             ebdd_label_diff_net_batch_final = tf.divide(tf.add_n(ebdd_label_diff_net_batch_final),
-                                                        tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
+                                                        len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
                                                         name='ebdd_label_diff_net_batch_final')
             ebdd_label_diff_loss_batch_final = tf.divide(tf.add_n(ebdd_label_diff_loss_batch_final),
-                                                         tf.ones(shape=ebdd_label_diff_loss_batch_final[0].shape),
+                                                         len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_loss_batch_final[0].shape),
                                                          name='ebdd_label_diff_loss_batch_final')
             ebdd_label_diff_org_summary = tf.summary.scalar("ebdd_label_diff_org_batch",
                                                             ebdd_label_diff_org_batch_final)
@@ -935,7 +964,7 @@ class UNet(object):
 
             ebdd_weight_checker_summary=list()
             ebdd_weight_checker_final = tf.divide(tf.add_n(ebdd_weight_checker_final),
-                                                  tf.ones(shape=ebdd_weight_checker_final[0].shape),
+                                                  len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_checker_final[0].shape),
                                                   name='ebdd_weight_checker_final')
             for ii in range(int(ebdd_weight_checker_final.shape[0])):
                 checker_name=("ebdd_weight_checker@Label:%d" % ii)
@@ -947,7 +976,7 @@ class UNet(object):
                 #                                       name='ebdd_weight_checker_final')
 
         ebdd_weight_dynamic_checker_final = tf.divide(tf.add_n(ebdd_weight_dynamic_checker_final),
-                                                      tf.ones(shape=ebdd_weight_dynamic_checker_final[0].get_shape()),
+                                                      len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_dynamic_checker_final[0].get_shape()),
                                                       name='ebdd_weight_dynamic_checker_final')
 
 
@@ -988,6 +1017,11 @@ class UNet(object):
                 g_merged_summary = tf.summary.merge([g_merged_summary,travelling_summary])
 
 
+
+
+        learning_rate_summary=tf.summary.scalar('Learning_Rate',learning_rate)
+
+
         summary_handle = SummaryHandle(d_merged=d_merged_summary,
                                        g_merged=g_merged_summary,
                                        check_validate_image_summary=check_validate_image_summary,
@@ -996,7 +1030,8 @@ class UNet(object):
                                        check_train_image=check_train_image,
                                        ebdd_weights_house_bar=ebdd_weights_house_bar_summary,
                                        ebdd_weight_dynamic_checker_final=ebdd_weight_dynamic_checker_final,
-                                       ebdd_weights_house_bar_placeholder=ebdd_weights_house_bar_placeholder)
+                                       ebdd_weights_house_bar_placeholder=ebdd_weights_house_bar_placeholder,
+                                       learning_rate=learning_rate_summary)
         setattr(self, "summary_handle", summary_handle)
 
 
@@ -1023,7 +1058,6 @@ class UNet(object):
 
 
         tower_loss_list=[]
-        #self.available_gpu_list = self.get_available_gpus()
         self.available_gpu_list = self.forward_backward_device
 
         with tf.Graph().as_default(), tf.device(self.parameter_update_device):
@@ -1038,11 +1072,26 @@ class UNet(object):
                 d_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
                 g_optimizer = tf.train.GradientDescentOptimizer(learning_rate)
 
-            data_provider = TrainDataProvider(self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
-                                            sub_train_set_num=self.sub_train_set_num)
+            data_provider = TrainDataProvider(data_dir=self.data_dir, train_name=self.train_obj_name, val_name=self.val_obj_name,
+                                              sub_train_set_num=self.sub_train_set_num,
+                                              training_mode=self.training_mode)
+            self.involved_font_list = data_provider.train_label_vec
+            self.itrs=np.ceil(self.samples_per_font/(self.batch_size*len(self.available_gpu_list))*len(self.involved_font_list))
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
-            self.involved_font_list = data_provider.train_label_vec
+            learning_rate_decay_rate = np.power(1.0/100.0,1.0/(self.epoch-1))
+            learning_rate_decay_rate = 0.9
+            print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d, LearningRateDecay:%.10f Per Epoch" %
+                  (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch,learning_rate_decay_rate))
+
+            #self.sample_steps = np.ceil(self.itrs/(2.5*len(self.involved_font_list)*len(self.available_gpu_list)))
+            self.sample_steps = 9000/(self.batch_size*len(self.available_gpu_list))
+            self.checkpoint_steps = self.sample_steps*10
+            self.summary_steps = np.ceil(50 / len(self.available_gpu_list))
+            print ("SampleStep:%d, CheckPointStep:%d, SummaryStep:%d" % (self.sample_steps,self.checkpoint_steps,self.summary_steps))
+
+
+
             if (self.training_mode == 0 or self.training_mode == 1) and (len(self.involved_font_list) != self.base_training_font_num):
                 print("Incorrect fonts number for mode %d training !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!" % (self.training_mode))
                 print("TrainingFontNum:%d, BaseTrainingFontNum:%d" % (
@@ -1057,71 +1106,117 @@ class UNet(object):
                 print("Involved Font Labels:")
                 print(self.involved_font_list)
                 
-
+            if not self.experiment_dir == None:
+                id, \
+                self.checkpoint_dir, \
+                self.log_dir, \
+                self.check_validate_dir, \
+                self.check_train_dir, \
+                self.weight_bar_dir = self.get_model_id_and_dir()
+                if self.resume_training == 0 and os.path.exists(self.log_dir):
+                    shutil.rmtree(self.checkpoint_dir)
+                    shutil.rmtree(self.log_dir)
+                    shutil.rmtree(self.check_validate_dir)
+                    shutil.rmtree(self.check_train_dir)
+                    shutil.rmtree(self.weight_bar_dir)
+                    print("new model ckpt / log / sample / weight bar directories removed for %s" % id)
+                if not os.path.exists(self.log_dir):
+                    os.makedirs(self.checkpoint_dir)
+                    os.makedirs(self.log_dir)
+                    os.makedirs(self.check_validate_dir)
+                    os.makedirs(self.check_train_dir)
+                    os.makedirs(self.weight_bar_dir)
+                    print("new model ckpt / log / sample / weight bar directories created for %s" % id)
 
             total_batches = data_provider.compute_total_batch_num(self.batch_size,len(self.available_gpu_list))
             val_batch_iter = data_provider.get_val_iter(self.batch_size)
 
 
 
-            tower_grads_d = []
-            tower_grads_g = []
-            tower_grads_g_again = []
-            # tower_grads_l1 = []
+            # model building across multiple gpus
             with tf.variable_scope(tf.get_variable_scope()):
                 for ii in xrange(len(self.available_gpu_list)):
                     with tf.device(self.available_gpu_list[ii]):
                         with tf.name_scope('tower_%d' % (ii)) as scope:
                             tower_loss_list.append(self.build_model(current_gpu_id=ii))
-                            g_vars, d_vars, all_vars,str_marks = \
+                            _, _, all_vars,str_marks = \
                                 self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
                                                              freeze_decoder=self.freeze_decoder,
                                                              freeze_discriminator=self.freeze_discriminator,
                                                              freeze_ebdd_weights=self.freeze_ebdd_weights)
 
-
-
-
-
-
-
                             tf.get_variable_scope().reuse_variables()
 
-                            grads_d = d_optimizer.compute_gradients(loss=lossHandleList[ii].d_loss,var_list=d_vars)
-                            grads_g = g_optimizer.compute_gradients(loss=lossHandleList[ii].g_loss,var_list=g_vars)
-
-
-                            # magic moveo to optimize G again
-                            # according oto https://github.com/carpedm20/DCGAN-tensorflow
-                            grads_g_again = g_optimizer.compute_gradients(loss=lossHandleList[ii].g_loss,var_list=g_vars)
-                            # grads_l1 = g_optimizer.compute_gradients(loss=lossHandleList[ii].l1_loss,var_list=g_vars)
-
-                            tower_grads_d.append(grads_d)
-                            tower_grads_g.append(grads_g)
-                            tower_grads_g_again.append(grads_g_again)
-                            # tower_grads_l1.append(grads_l1)
-
                         print(
-                            "Initialization for %s completed with Encoder/Decoder/Discriminator/EbddWeights Freeze/NonFreeze 0/1: %s"
+                            "Initialization model building for %s completed with Encoder/Decoder/Discriminator/EbddWeights Freeze/NonFreeze 0/1: %s"
                             % (self.available_gpu_list[ii], str_marks))
 
 
+            # optimization for d across multiple gpus
+            tower_grads_d=list()
+            with tf.variable_scope(tf.get_variable_scope()):
+                for ii in xrange(len(self.available_gpu_list)):
+                    with tf.device(self.available_gpu_list[ii]):
+                        with tf.name_scope('tower_%d' % (ii)) as scope:
+                            _, d_vars, _, _ = \
+                                self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
+                                                             freeze_decoder=self.freeze_decoder,
+                                                             freeze_discriminator=self.freeze_discriminator,
+                                                             freeze_ebdd_weights=self.freeze_ebdd_weights)
 
+                            grads_d = d_optimizer.compute_gradients(loss=lossHandleList[ii].d_loss, var_list=d_vars)
+                            tower_grads_d.append(grads_d)
+            grads_d = self.average_gradients(tower_grads_d)
+            apply_gradient_op_d = d_optimizer.apply_gradients(grads_d, global_step=global_step)
+            print("Initialization for the discriminator optimizer completed.")
+
+
+            # optimization for g across multiple gpus
+            tower_grads_g = list()
+            with tf.variable_scope(tf.get_variable_scope()):
+                for ii in xrange(len(self.available_gpu_list)):
+                    with tf.device(self.available_gpu_list[ii]):
+                        with tf.name_scope('tower_%d' % (ii)) as scope:
+                            g_vars, _, _, _ = \
+                                self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
+                                                             freeze_decoder=self.freeze_decoder,
+                                                             freeze_discriminator=self.freeze_discriminator,
+                                                             freeze_ebdd_weights=self.freeze_ebdd_weights)
+
+                            grads_g = g_optimizer.compute_gradients(loss=lossHandleList[ii].g_loss, var_list=g_vars)
+                            tower_grads_g.append(grads_g)
+            grads_g = self.average_gradients(tower_grads_g)
+            apply_gradient_op_g = g_optimizer.apply_gradients(grads_g, global_step=global_step)
+            print("Initialization for the 1st generator optimizer completed.")
+
+
+
+            # optimization for g again across multiple gpus
+            tower_grads_g_again = list()
+            with tf.variable_scope(tf.get_variable_scope()):
+                for ii in xrange(len(self.available_gpu_list)):
+                    with tf.device(self.available_gpu_list[ii]):
+                        with tf.name_scope('tower_%d' % (ii)) as scope:
+                            g_vars, _, _, _ = \
+                                self.retrieve_trainable_vars(freeze_encoder=self.freeze_encoder,
+                                                             freeze_decoder=self.freeze_decoder,
+                                                             freeze_discriminator=self.freeze_discriminator,
+                                                             freeze_ebdd_weights=self.freeze_ebdd_weights)
+
+                            grads_g_again = g_optimizer.compute_gradients(loss=lossHandleList[ii].g_loss, var_list=g_vars)
+                            tower_grads_g_again.append(grads_g_again)
 
             # We must calculate the mean of each gradient. Note that this is the
             # synchronization point across all towers.
-            grads_d = self.average_gradients(tower_grads_d)
-            grads_g = self.average_gradients(tower_grads_g)
             grads_g_again = self.average_gradients(tower_grads_g_again)
-            # grads_l1 = self.average_gradients(tower_grads_l1)
-
-            apply_gradient_op_d = d_optimizer.apply_gradients(grads_d, global_step=global_step)
-            apply_gradient_op_g = g_optimizer.apply_gradients(grads_g, global_step=global_step)
             apply_gradient_op_g_again = g_optimizer.apply_gradients(grads_g_again, global_step=global_step)
-            # apply_gradient_op_l1 = g_optimizer.apply_gradients(grads_l1, global_step=global_step)
+            print("Initialization for the 2nd generator optimizer completed.")
 
-            # summaries finalization function
-            self.summary_finalization(tower_loss_list)
+
+
+
+
+            self.summary_finalization(tower_loss_list,learning_rate)
             print("Initialization completed, and training started right now.")
 
 
@@ -1157,20 +1252,35 @@ class UNet(object):
 
             summary_handle = getattr(self, "summary_handle")
             for ei in range(self.epoch):
-                train_batch_iter = data_provider.get_train_iter(self.batch_size * len(self.available_gpu_list))
+                train_batch_iter = data_provider.get_train_iter(batch_size=self.batch_size * len(self.available_gpu_list),
+                                                                training_data_rotate=self.training_data_rotate,
+                                                                training_data_flip=self.training_data_flip)
 
-                if (ei + 1) % self.schedule == 0:
-                    update_lr = current_lr / 2.0
-                    # minimum learning rate guarantee
-                    update_lr = max(update_lr, 0.0002)
-                    print("decay learning rate from %.5f to %.5f" % (current_lr, update_lr))
+                # if (ei + 1) % self.schedule == 0:
+                #     update_lr = current_lr / 2.0
+                #     # minimum learning rate guarantee
+                #     update_lr = max(update_lr, 0.0002)
+                #     print("decay learning rate from %.5f to %.5f" % (current_lr, update_lr))
+                #     current_lr = update_lr
+
+                if not ei==0:
+                    update_lr = current_lr * learning_rate_decay_rate
+                    update_lr = max(update_lr, 0.00009)
+                    print("decay learning rate from %.7f to %.7f" % (current_lr, update_lr))
                     current_lr = update_lr
+
 
                 for bid, batch in enumerate(train_batch_iter):
                     self.counter += 1
 
                     this_itr_start = time.time()
                     labels, batch_images = batch
+                    batch_images,labels=\
+                        self.check_train_data_validation(batch_images_input=batch_images,batch_labels_input=labels)
+
+
+
+
                     labels = self.dense_to_one_hot(input_label=labels, label_length=len(self.involved_font_list),multi_gpu_mark=True)
 
                     # Optimize D
@@ -1208,6 +1318,8 @@ class UNet(object):
                                                      current_lr=current_lr,
                                                      learning_rate=learning_rate,
                                                      availalbe_device_num=len(self.available_gpu_list)))
+                    learning_rate_summary = self.sess.run(summary_handle.learning_rate,feed_dict={learning_rate:current_lr})
+
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     passed_full = time.time() - start_time
                     passed_itr = time.time() - this_itr_start
@@ -1216,6 +1328,7 @@ class UNet(object):
                         ei, self.epoch,
                         bid, total_batches,
                         passed_itr, passed_full / 3600))
+                    #current_lr=current_lr * 0.95
 
                     # percentage_completed = float(self.counter)/ float(self.epoch*total_batches)*100
                     percentage_completed = float(self.counter) / float(self.epoch * total_batches) * 100
@@ -1227,9 +1340,10 @@ class UNet(object):
                     # print("Checker for counter: counter:%d, ei*total_batches+bid:%d" %(self.counter-1,ei*total_batches+bid))
                     print(self.print_separater)
 
-                    if self.counter % self.summary_steps == 0:
+                    if self.counter % 1 == 0:
                         summary_writer.add_summary(d_summary, self.counter)
                         summary_writer.add_summary(g_summary, self.counter)
+                        summary_writer.add_summary(learning_rate_summary,self.counter)
                         summary_writer.flush()
 
                     if self.counter % self.sample_steps == 0:
@@ -1300,6 +1414,44 @@ class UNet(object):
                 print("Current Epoch Training Completed, and file saved.")
                 self.checkpoint(saver)
                 print(self.print_separater)
+
+    def check_train_data_validation(self,batch_images_input,batch_labels_input):
+        valid_list=list()
+        batch_images_output=batch_images_input
+        batch_labels_output=batch_labels_input
+        for ii in range(self.batch_size*len(self.available_gpu_list)):
+            current_image=batch_images_input[ii,:,:,:]
+            imgA = current_image[:, :, 0:3]
+            imgB = current_image[:, :, 3:]
+
+            valid_A = ((np.max(imgA) != np.min(imgA)))
+            valid_B = ((np.max(imgB) != np.min(imgB)))
+            valid_AB =  valid_A and valid_B
+
+            valid_list.append(valid_AB)
+
+        # valid_list[2]=False
+        # valid_list[4]=False
+
+        invalid_exist = False in valid_list
+        if invalid_exist:
+            invalid_indices=[i for i, a in enumerate(valid_list) if a==False]
+            valid_indices=[i for i, a in enumerate(valid_list) if a==True]
+            status_str=("Invalid Training Data Found with Num:%d" % len(invalid_indices))
+            print(status_str)
+
+            for ii in range(len(invalid_indices)):
+                this_invalid_index=invalid_indices[ii]
+                selected_valid_index=random.sample(valid_indices, 1)[0]
+                batch_images_output[this_invalid_index,:,:,:]=batch_images_output[selected_valid_index,:,:,:]
+                batch_labels_output[this_invalid_index]=batch_labels_output[selected_valid_index]
+
+
+
+        return batch_images_output,batch_labels_output
+
+
+
 
 
     def infer_procedures(self,inferred_result_saving_path='./',

@@ -7,7 +7,7 @@ from tensorflow.python.client import device_lib
 
 import argparse
 
-from model.unet_new import UNet
+from model.unet import UNet
 
 
 input_args = ['--training_mode','0',
