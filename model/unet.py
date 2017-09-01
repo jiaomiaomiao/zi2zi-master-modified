@@ -906,7 +906,7 @@ class UNet(object):
 
 
         real_category_loss_final = tf.divide(tf.add_n(real_category_loss_final),
-                                             len(self.available_gpu_list) *tf.ones(shape=real_category_loss_final[0].shape),
+                                             len(self.available_gpu_list) * tf.ones(shape=real_category_loss_final[0].shape),
                                              name='real_category_loss_final')
         fake_category_loss_final = tf.divide(tf.add_n(fake_category_loss_final),
                                              len(self.available_gpu_list) *tf.ones(shape=fake_category_loss_final[0].shape),
