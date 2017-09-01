@@ -886,10 +886,10 @@ class UNet(object):
 
 
         const_loss_final = tf.divide(tf.add_n(const_loss_final),
-                                     len(self.available_gpu_list) *tf.ones(shape=const_loss_final[0].shape),
+                                     self.Lconst_penalty * len(self.available_gpu_list) * tf.ones(shape=const_loss_final[0].shape),
                                      name='const_loss_final')
         l1_loss_final = tf.divide(tf.add_n(l1_loss_final),
-                                  len(self.available_gpu_list) *tf.ones(shape=l1_loss_final[0].shape),
+                                  self.L1_penalty * len(self.available_gpu_list) * tf.ones(shape=l1_loss_final[0].shape),
                                   name='l1_loss_final')
         cheat_loss_final = tf.divide(tf.add_n(cheat_loss_final),
                                      len(self.available_gpu_list) *tf.ones(shape=cheat_loss_final[0].shape),
@@ -931,10 +931,10 @@ class UNet(object):
         d_loss_summary = tf.summary.scalar("d_loss", d_loss_final)
 
         ebdd_wight_loss_final = tf.divide(tf.add_n(ebdd_wight_loss_final),
-                                          len(self.available_gpu_list) *tf.ones(shape=ebdd_wight_loss_final[0].shape),
-                                             name='ebdd_wight_loss_final')
+                                          self.ebdd_weight_penalty * len(self.available_gpu_list) * tf.ones(shape=ebdd_wight_loss_final[0].shape),
+                                          name='ebdd_wight_loss_final')
         ebdd_weight_dynamic_difference_from_one_final = tf.divide(tf.add_n(ebdd_weight_dynamic_difference_from_one_final),
-                                                                  len(self.available_gpu_list) *tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
+                                                                  len(self.available_gpu_list) * tf.ones(shape=ebdd_weight_dynamic_difference_from_one_final[0].shape),
                                                                   name='ebdd_weight_dynamic_difference_from_one_final')
         ebdd_weight_loss_summary = tf.summary.scalar("ebdd_weight_loss", ebdd_wight_loss_final)
         ebdd_weight_dynamic_difference_from_one_summary = tf.summary.scalar("ebdd_weight_dynamic_difference_from_one", ebdd_weight_dynamic_difference_from_one_final)
@@ -949,7 +949,7 @@ class UNet(object):
                                                       len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_org_batch_final[0].shape),
                                                       name='ebdd_label_diff_org_batch_final')
             ebdd_label_diff_net_batch_final = tf.divide(tf.add_n(ebdd_label_diff_net_batch_final),
-                                                        len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
+                                                        len(self.available_gpu_list) * tf.ones(shape=ebdd_label_diff_net_batch_final[0].shape),
                                                         name='ebdd_label_diff_net_batch_final')
             ebdd_label_diff_loss_batch_final = tf.divide(tf.add_n(ebdd_label_diff_loss_batch_final),
                                                          len(self.available_gpu_list) *tf.ones(shape=ebdd_label_diff_loss_batch_final[0].shape),
@@ -1208,7 +1208,7 @@ class UNet(object):
 
             # We must calculate the mean of each gradient. Note that this is the
             # synchronization point across all towers.
-            grads_g_again = self.average_gradients(tower_grads_g_again)
+            grads_g_again = self.average_gradients( )
             apply_gradient_op_g_again = g_optimizer.apply_gradients(grads_g_again, global_step=global_step)
             print("Initialization for the 2nd generator optimizer completed.")
 
