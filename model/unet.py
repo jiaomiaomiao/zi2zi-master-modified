@@ -58,7 +58,7 @@ class UNet(object):
 
                  optimization_method='adam',
 
-                 batch_size=1,lr=0.001,
+                 batch_size=1,lr=0.001,final_learning_rate_pctg=0.2,
                  samples_per_font=2000,
                  schedule=5,
 
@@ -78,8 +78,8 @@ class UNet(object):
                  parameter_update_device='/cpu:0',
                  forward_backward_device='/cpu:0',
 
-                 training_data_rotate=1,
-                 training_data_flip=1,
+                 training_data_rotate=0,
+                 training_data_flip=0,
 
 
 
@@ -133,6 +133,7 @@ class UNet(object):
 
         self.batch_size = batch_size
         self.lr=lr
+        self.final_learning_rate_pctg=final_learning_rate_pctg
         self.schedule=schedule
         self.samples_per_font=samples_per_font
 
@@ -643,9 +644,13 @@ class UNet(object):
         else:
             flip_status="WithOutFlip"
 
+        # model_id = model_id + \
+        #            "_" + encoder_status + "_" + decoder_status + \
+        #            "_" + rotate_status + "_" + flip_status + \
+        #            "_" + font_num + "_" + character_num_of_each_font
+
         model_id = model_id + \
                    "_" + encoder_status + "_" + decoder_status + \
-                   "_" + rotate_status + "_" + flip_status + \
                    "_" + font_num + "_" + character_num_of_each_font
 
 
@@ -1079,8 +1084,7 @@ class UNet(object):
             self.itrs=np.ceil(self.samples_per_font/(self.batch_size*len(self.available_gpu_list))*len(self.involved_font_list))
             self.epoch = data_provider.get_total_epoch_num(self.itrs, self.batch_size,len(self.available_gpu_list))
             self.schedule = int(np.floor(self.epoch / self.schedule))
-            learning_rate_decay_rate = np.power(1.0/100.0,1.0/(self.epoch-1))
-            learning_rate_decay_rate = 0.9
+            learning_rate_decay_rate = np.power(self.final_learning_rate_pctg,1.0/(self.epoch-1))
             print("BatchSize:%d, AvailableDeviceNum:%d, ItrsNum:%d, EpochNum:%d, LearningRateDecay:%.10f Per Epoch" %
                   (self.batch_size, len(self.available_gpu_list), self.itrs, self.epoch,learning_rate_decay_rate))
 
@@ -1208,7 +1212,7 @@ class UNet(object):
 
             # We must calculate the mean of each gradient. Note that this is the
             # synchronization point across all towers.
-            grads_g_again = self.average_gradients( )
+            grads_g_again = self.average_gradients(tower_grads_g_again)
             apply_gradient_op_g_again = g_optimizer.apply_gradients(grads_g_again, global_step=global_step)
             print("Initialization for the 2nd generator optimizer completed.")
 
@@ -1323,20 +1327,20 @@ class UNet(object):
                     current_time = time.strftime('%Y-%m-%d @ %H:%M:%S', time.localtime())
                     passed_full = time.time() - start_time
                     passed_itr = time.time() - this_itr_start
-                    print("Time:%s, Epoch:%d/%d, Itr:%d/%d, ItrDuration:%.2fss, FullDuration:%.2fhrs(%.1fdays);" % (
+                    print("Time:%s, Epoch:%d/%d, Itr:%d/%d, ItrDuration:%.2fss, FullDuration:%.2fhrs;" % (
                         current_time,
                         ei, self.epoch,
                         bid, total_batches,
-                        passed_itr, passed_full / 3600,
-                        passed_full / 3600 / 24))
+                        passed_itr, passed_full / 3600))
 
                     # percentage_completed = float(self.counter)/ float(self.epoch*total_batches)*100
                     percentage_completed = float(self.counter) / float(self.epoch * total_batches) * 100
                     percentage_to_be_fulfilled = 100 - percentage_completed
                     hrs_estimated_remaining = (float(passed_full) / (
                         percentage_completed + eps)) * percentage_to_be_fulfilled / 3600
-                    print("Complete:%.2fpecgs, TimeRemainingEstimated:%.2fhrs" % (
-                        percentage_completed, hrs_estimated_remaining))
+                    print("Complete:%.2fpecgs, TimeRemainingEstimated:%.2fhrs(%.1fdays)" % (
+                        percentage_completed, hrs_estimated_remaining,
+                        hrs_estimated_remaining / 24))
                     # print("Checker for counter: counter:%d, ei*total_batches+bid:%d" %(self.counter-1,ei*total_batches+bid))
                     print(self.print_separater)
 

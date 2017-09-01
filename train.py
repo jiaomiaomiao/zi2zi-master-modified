@@ -15,7 +15,7 @@ from model.unet import UNet
 input_args = ['--training_mode','0',
               '--base_trained_model_dir', './',
 
-              '--experiment_id','20170831',
+              '--experiment_id','20170901',
 
               '--train_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/train.obj',
               '--val_name','/dataA/Harric/Chinese_Character_Generation/Font_Binary_Data/Font_Obj_80_PF/val.obj',
@@ -41,8 +41,9 @@ input_args = ['--training_mode','0',
 
               '--device_mode','3',
 
-              '--data_rotate','0',
-              '--data_flip','0',
+              '--final_learning_rate_pctg','0.2',
+
+
               ]
 # device_mode=0: training only on cpu
 # device_mode=1: forward & backward on multiple gpus && parameter update on cpu
@@ -92,6 +93,9 @@ parser.add_argument('--samples_per_font', dest='samples_per_font', type=int, req
                     help='how many samples shall be seen for a epoch')
 parser.add_argument('--batch_size', dest='batch_size', type=int, help='number of examples in batch',required=True)
 parser.add_argument('--lr', dest='lr', type=float, default=0.001, help='initial learning rate')
+parser.add_argument('--final_learning_rate_pctg', dest='final_learning_rate_pctg', type=float, default=0.2,
+                    help='final leanring rate of the initial one')
+
 parser.add_argument('--optimization_method',type=str,required=True,help='optimization method selection')
 parser.add_argument('--schedule', dest='schedule', type=int, required=True, help='number of epochs to half learning rate')
 parser.add_argument('--resume_training', dest='resume_training', type=int, help='resume from previous training',required=True)
@@ -126,11 +130,7 @@ parser.add_argument('--device_mode', dest='device_mode',type=int,required=True,
 
 
 
-# data argument setting
-parser.add_argument('--data_rotate', dest='data_rotate', type=int, required=True,
-                    help="rotate training data")
-parser.add_argument('--data_flip', dest='data_flip', type=int, required=True,
-                    help="flip training data")
+
 
 
 
@@ -183,7 +183,8 @@ def main(_):
 
                  optimization_method=args.optimization_method,
 
-                 batch_size=args.batch_size, lr=args.lr, samples_per_font=args.samples_per_font, schedule=args.schedule,
+                 batch_size=args.batch_size, lr=args.lr, final_learning_rate_pctg=args.final_learning_rate_pctg,
+                 samples_per_font=args.samples_per_font, schedule=args.schedule,
 
                  ebdd_dictionary_dim=args.ebdd_dictionary_dim,
 
@@ -202,8 +203,7 @@ def main(_):
                  parameter_update_device=parameter_update_device,
                  forward_backward_device=forward_backward_device_list,
 
-                 training_data_rotate=args.data_rotate,
-                 training_data_flip=args.data_flip,
+
 
 
                  )
